@@ -581,7 +581,7 @@ Aşağıdaki 4 doğrulama, dikey dilimin ÖNÜNE, projenin **ilk haftasına** ko
 
 P2 çarpıtmaları zaten decal transform'udur (10–20° rotasyon) — neredeyse bedava. Filtre + fallback ilk hafta doğrulamasında mini test edilir (§12.1); sistemin tamamı ilk 80 saatlik dikey dilimdedir (§13.3) — en belirsiz iş en başta.
 
-### 12.4 Hücre streaming + portal culling [MVP]
+### 12.4 Hücre streaming + occlusion culling [MVP]
 
 Sis 40–80 m'ye kilitli olduğundan çekim mesafesi sınırlıdır; bölgeler hücre bazlı stream edilir. **Düzeltme (teknik denetim):** Godot 4'te Godot 3'ün rooms/portals sistemi YOKTUR; görünürlük ayrımı **raster occlusion culling + OccluderInstance3D** ile yapılır — duvar kit parçaları basit box/quad occluder taşır (labirent yazım aracının importer'ı bunu üretir, §7.2). NavigationMesh üretimi bilinçli olarak kapsam dışıdır (Watcher'da pathfinding yok, §5.1). **Tuzak uyarısı:** devasa avlularda sis mesafesini artırma hevesine direnilir (§9.5).
 
