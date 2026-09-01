@@ -1,0 +1,1927 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Project Maze — Labirent Yazım Aracı</title>
+<!--
+  Project Maze — Labirent Yazım Aracı (tek dosya, offline, bağımlılık yok)
+  Sözleşme: tools/SEMA.md  |  Karar kaynağı: GDD §7.2
+  Kapsam: Enkaz + Sığlık 2a + Derin Sığlık 2b. Merkez araca girmez (kind: manual).
+-->
+<style>
+:root{
+  --bg:#0d1117; --bg2:#161b22; --bg3:#1c2128; --line:#30363d; --line2:#3d444d;
+  --fg:#e6edf3; --fg2:#9aa4b2; --fg3:#6e7681;
+  --acc:#58a6ff; --ok:#3fb950; --warn:#d29922; --err:#f85149;
+  --floor:#232a33; --floor2:#2b333d; --wall:#77808c; --door:#ffa657; --lock:#f85149;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  background:var(--bg); color:var(--fg); overflow:hidden;
+  font:12px/1.45 ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+#app{display:grid;grid-template-columns:262px 1fr 300px;grid-template-rows:38px 1fr;height:100%}
+header{
+  grid-column:1/-1;display:flex;align-items:center;gap:10px;padding:0 10px;
+  background:var(--bg2);border-bottom:1px solid var(--line);
+}
+header h1{font-size:12px;margin:0;letter-spacing:.06em;text-transform:uppercase;color:var(--fg2);white-space:nowrap}
+header .fname{color:var(--acc);font-weight:600}
+header .sp{flex:1}
+aside{background:var(--bg2);overflow-y:auto;overflow-x:hidden}
+#left{border-right:1px solid var(--line)}
+#right{border-left:1px solid var(--line)}
+main{position:relative;background:var(--bg);overflow:hidden}
+canvas{display:block;width:100%;height:100%;cursor:crosshair}
+
+/* --- paneller --- */
+.panel{border-bottom:1px solid var(--line)}
+.panel>h2{
+  margin:0;padding:7px 10px;font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--fg2);cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;
+  background:var(--bg3);
+}
+.panel>h2::before{content:"▾";font-size:9px;color:var(--fg3);transition:transform .12s}
+.panel.collapsed>h2::before{transform:rotate(-90deg)}
+.panel.collapsed>.body{display:none}
+.panel>.body{padding:8px 10px 11px}
+.row{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.row>label{flex:0 0 82px;color:var(--fg2);font-size:11px}
+.row.wide>label{flex:0 0 108px}
+.row>.grow{flex:1;min-width:0}
+input,select,textarea,button{
+  font:inherit;color:var(--fg);background:var(--bg3);border:1px solid var(--line);
+  border-radius:4px;padding:3px 6px;
+}
+input[type=range]{padding:0;background:none;border:none;height:16px}
+input[type=color]{padding:1px;height:22px;width:30px;cursor:pointer}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--acc)}
+input[type=number],input[type=text]{width:100%;min-width:0}
+textarea{width:100%;resize:vertical;min-height:44px;line-height:1.4}
+button{cursor:pointer;background:var(--bg3);white-space:nowrap}
+button:hover{border-color:var(--line2);background:#242c36}
+button:active{transform:translateY(1px)}
+button.pri{background:#1f6feb;border-color:#388bfd;color:#fff}
+button.pri:hover{background:#2b7ef2}
+button.danger:hover{border-color:var(--err);color:var(--err)}
+button:disabled{opacity:.4;cursor:not-allowed}
+.btns{display:flex;gap:5px;flex-wrap:wrap}
+.btns>button{flex:1}
+.hint{color:var(--fg3);font-size:10.5px;line-height:1.5;margin:5px 0 0}
+.sep{height:1px;background:var(--line);margin:9px -10px}
+
+/* --- araç seçimi --- */
+.tools{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.tools button{
+  display:flex;align-items:center;gap:6px;justify-content:flex-start;padding:5px 7px;text-align:left;
+}
+.tools button .k{color:var(--fg3);font-size:10px;margin-left:auto}
+.tools button.on{background:#1f6feb22;border-color:var(--acc);color:var(--acc)}
+.tools button.on .k{color:var(--acc)}
+
+/* --- listeler --- */
+.list{display:flex;flex-direction:column;gap:3px;max-height:230px;overflow-y:auto}
+.list .it{
+  display:flex;align-items:center;gap:7px;padding:4px 6px;border:1px solid transparent;
+  border-radius:4px;cursor:pointer;
+}
+.list .it:hover{background:var(--bg3);border-color:var(--line)}
+.list .it.on{background:#1f6feb22;border-color:var(--acc)}
+.dot{width:11px;height:11px;border-radius:50%;flex:0 0 auto;border:1px solid #0006}
+.sq{width:11px;height:11px;border-radius:2px;flex:0 0 auto;border:1px solid #0006}
+.it .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.it .ct{color:var(--fg3);font-size:10px}
+
+/* --- metrik --- */
+.metric{display:flex;align-items:baseline;gap:6px;padding:3px 0;border-bottom:1px dotted #ffffff12}
+.metric .lb{flex:1;color:var(--fg2);font-size:11px}
+.metric .vl{font-weight:600;font-variant-numeric:tabular-nums}
+.metric .tg{color:var(--fg3);font-size:10px}
+.vl.ok{color:var(--ok)} .vl.warn{color:var(--warn)} .vl.err{color:var(--err)}
+.bar{height:5px;border-radius:3px;background:var(--bg3);overflow:hidden;margin:3px 0 7px;display:flex}
+.bar i{display:block;height:100%}
+
+/* --- doğrulama --- */
+#issues{display:flex;flex-direction:column;gap:3px}
+.iss{
+  display:flex;gap:7px;padding:5px 7px;border-radius:4px;border:1px solid var(--line);
+  background:var(--bg3);cursor:pointer;align-items:flex-start;line-height:1.4;
+}
+.iss:hover{border-color:var(--line2)}
+.iss .bd{font-size:11px}
+.iss.err{border-left:3px solid var(--err)}
+.iss.warn{border-left:3px solid var(--warn)}
+.iss.info{border-left:3px solid var(--fg3)}
+.iss .tag{font-size:9px;color:var(--fg3);letter-spacing:.05em}
+.empty{color:var(--ok);font-size:11px;padding:6px 2px}
+
+/* --- overlay --- */
+#hud{
+  position:absolute;left:9px;bottom:9px;pointer-events:none;color:var(--fg3);
+  font-size:11px;background:#0d1117cc;padding:4px 8px;border-radius:4px;border:1px solid var(--line);
+}
+#toast{
+  position:absolute;left:50%;top:12px;transform:translateX(-50%);
+  background:var(--bg3);border:1px solid var(--line2);border-radius:5px;padding:6px 14px;
+  opacity:0;transition:opacity .25s;pointer-events:none;font-size:11.5px;z-index:9;
+}
+#toast.on{opacity:1}
+#toast.err{border-color:var(--err);color:#ffb1ab}
+#toast.ok{border-color:var(--ok);color:#7ee787}
+#drop{
+  position:absolute;inset:0;background:#0d1117e8;display:none;align-items:center;justify-content:center;
+  border:2px dashed var(--acc);font-size:15px;color:var(--acc);z-index:20;
+}
+#drop.on{display:flex}
+.kbd{
+  display:inline-block;background:var(--bg3);border:1px solid var(--line);border-bottom-width:2px;
+  border-radius:3px;padding:0 4px;font-size:10px;color:var(--fg2);
+}
+.chk{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--fg2);cursor:pointer;padding:2px 0}
+.chk input{width:auto;margin:0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:4px 8px}
+.warnbox{border:1px solid var(--warn);background:#d2992215;border-radius:4px;padding:6px 8px;font-size:10.5px;color:#e3b341;margin-top:6px}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Project&nbsp;Maze — Labirent Aracı</h1>
+    <span class="fname" id="hFile">(kaydedilmemiş)</span>
+    <span id="hDirty" style="color:var(--warn)"></span>
+    <span class="sp"></span>
+    <span id="hZone" style="color:var(--fg3)"></span>
+    <button id="bNew">Yeni…</button>
+    <button id="bOpen">Aç <span style="color:var(--fg3)">^O</span></button>
+    <button class="pri" id="bSave">Kaydet <span style="opacity:.7">^S</span></button>
+    <button id="bSaveAs">Farklı kaydet</button>
+  </header>
+
+  <aside id="left">
+    <div class="panel" id="pTools"><h2>Araçlar</h2><div class="body">
+      <div class="tools" id="toolBtns"></div>
+      <p class="hint" id="toolHint"></p>
+      <div class="sep"></div>
+      <div class="btns">
+        <button id="bUndo">↶ Geri <span style="color:var(--fg3)">^Z</span></button>
+        <button id="bRedo">↷ İleri</button>
+      </div>
+    </div></div>
+
+    <div class="panel" id="pGen"><h2>Üretim</h2><div class="body">
+      <div class="row"><label>Tohum</label>
+        <input type="number" id="fSeed" class="grow" step="1">
+        <button id="bSeedRnd" title="Rastgele tohum">🎲</button>
+      </div>
+      <div class="row"><label>Örgü (braid)</label>
+        <input type="range" id="fBraid" class="grow" min="0" max="1" step="0.01">
+        <span id="lBraid" style="width:34px;text-align:right">0.70</span>
+      </div>
+      <p class="hint">Örgü = <b>kaldırılan ölü uç yüzdesi</b>; ölçülen <b>döngü oranı</b> bundan farklıdır (sağ paneldeki metrik).
+      GDD §7.1-3 hedefi %70 döngü / %30 dal — <b>Hedefe ayarla</b> örgüyü bu orana kilitler.</p>
+      <div class="sep"></div>
+      <div class="btns">
+        <button class="pri" id="bGen">Üret <span style="opacity:.7">G</span></button>
+        <button id="bAutoBraid" title="Döngü oranı %70 hedefine ikili aramayla ayarla">Hedefe ayarla</button>
+      </div>
+      <label class="chk" style="margin-top:7px"><input type="checkbox" id="fKeepMarkers" checked> Üretimde marker'ları koru</label>
+      <div class="warnbox" id="lockInfo" style="display:none"></div>
+      <p class="hint">Kilit-sınır kuralı: ucu kilitli/void/manual hücreye değen kenar yeniden üretimde <b>dokunulmazdır</b> (SEMA §7).</p>
+    </div></div>
+
+    <div class="panel collapsed" id="pGrid"><h2>Izgara ve meta</h2><div class="body">
+      <div class="row"><label>Bölge</label><select id="fZoneId" class="grow"></select></div>
+      <div class="row"><label>Bölge adı</label><input type="text" id="fZoneName" class="grow"></div>
+      <div class="row"><label>Genişlik</label><input type="number" id="fGW" min="3" max="200" step="1"></div>
+      <div class="row"><label>Yükseklik</label><input type="number" id="fGH" min="3" max="200" step="1"></div>
+      <div class="btns"><button id="bResize">Izgarayı yeniden boyutlandır</button></div>
+      <div class="sep"></div>
+      <div class="row wide"><label>Hücre (m)</label><input type="number" id="fCellSize" step="0.25" min="0.5"></div>
+      <div class="row wide"><label>Yürüme (m/s)</label><input type="number" id="fWalk" step="0.1" min="0.2"></div>
+      <p class="hint">⚠ <b>walkSpeed</b> oyuncu controller'ındaki sabitle aynı olmak zorundadır (GDD §7.2).</p>
+      <div class="row wide"><label>Hedef süre (dk)</label><input type="number" id="fTarget" step="1" min="1"></div>
+      <div class="row wide"><label>Kaybolma payı ×</label><input type="number" id="fExplore" step="0.05" min="1"></div>
+      <p class="hint">GDD §7.3: kaybolma payı kritik yol bütçesinin <b>ÜSTÜNE</b> gelir (tüm oyun için +10–15 dk),
+      bütçe ona yaslanmaz → <b>1.0–1.2</b> bandında tut.</p>
+      <div class="row wide"><label>Sis min/max</label>
+        <input type="number" id="fFogMin" step="1" style="width:50%"><input type="number" id="fFogMax" step="1" style="width:50%"></div>
+      <div class="sep"></div>
+      <div class="row wide"><label>Not</label></div>
+      <textarea id="fNotes" placeholder="Bölge tasarım notu…"></textarea>
+    </div></div>
+
+    <div class="panel collapsed" id="pZones"><h2>Alt-bölge paleti</h2><div class="body">
+      <div class="list" id="zoneList"></div>
+      <div class="btns" style="margin-top:6px"><button id="bZoneAdd">+ Alt-bölge</button><button id="bZoneDel" class="danger">Sil</button></div>
+      <p class="hint">Lynch katman 2 (bölgesel kimlik): renk/ses/mimari kimliği taşıyan alanlar. Boyama aracıyla sürülür.</p>
+    </div></div>
+
+    <div class="panel collapsed" id="pPath"><h2>Kritik yol durakları</h2><div class="body">
+      <div class="list" id="pathList"></div>
+      <div class="btns" style="margin-top:6px">
+        <button id="bPathAdd">+ Seçili marker</button>
+        <button id="bPathAuto">Otomatik</button>
+      </div>
+      <p class="hint">Sıralı durak zinciri; süre tahmini bu zincir üzerinden ölçülür.
+      Boşsa araç <b>başlangıç → sembol kaynağı → sembol kapı</b> türetir; bu yalnız bir <b>alt sınırdır</b> —
+      gerçek kritik yol Kırık'ları, belgeleri ve sahne duraklarını da gezer (GDD §7.3).</p>
+    </div></div>
+
+    <div class="panel collapsed" id="pView"><h2>Görünüm</h2><div class="body">
+      <div class="grid2" id="viewToggles"></div>
+      <div class="sep"></div>
+      <div class="btns"><button id="bFit">Sığdır</button><button id="bZoomIn">+</button><button id="bZoomOut">−</button></div>
+    </div></div>
+  </aside>
+
+  <main>
+    <canvas id="cv"></canvas>
+    <div id="hud">—</div>
+    <div id="toast"></div>
+    <div id="drop">.maze.json dosyasını bırak</div>
+  </main>
+
+  <aside id="right">
+    <div class="panel" id="pInspect"><h2>Seçim</h2><div class="body" id="inspector">
+      <p class="hint">Seç aracıyla (<span class="kbd">V</span>) bir hücre, kenar veya marker'a tıkla.</p>
+    </div></div>
+
+    <div class="panel" id="pMarkers"><h2>Marker paleti</h2><div class="body">
+      <div class="list" id="markerPalette"></div>
+      <p class="hint" id="markerHint"></p>
+    </div></div>
+
+    <div class="panel" id="pMetrics"><h2>Lynch metrikleri</h2><div class="body" id="metrics"></div></div>
+
+    <div class="panel" id="pIssues"><h2>Doğrulama <span id="issCount" style="color:var(--fg3)"></span></h2>
+      <div class="body"><div id="issues"></div></div></div>
+  </aside>
+</div>
+
+<script>
+"use strict";
+/* ==========================================================================
+   0. SABİTLER — hepsi GDD'den türetilmiştir; araç yeni sabit icat etmez.
+   ========================================================================== */
+const SCHEMA_VERSION = 1;
+const FORMAT = "project_maze.maze";
+
+const LYNCH = {
+  loopTarget: 0.70,      // GDD §7.1-3
+  loopTol:    0.05,      // %65–75 kabul bandı
+  corridorSec: 60,       // GDD §7.1-1 "60 saniye kuralı"
+  symbolWalkMaxMin: 3,   // GDD §4.4 "kapıya yürüme ≤ 2–3 dk"
+  kirikSafeM: 10,        // GDD §6.1 "Kırık'ların 10 m çevresi dokunulmaz"
+  pathTolMin: 0.15       // hedef süreden ±%15 sapma kabul
+};
+
+// Bölge ön ayarları — GDD §7.3 tablosu.
+const ZONE_PRESETS = {
+  enkaz: {
+    name:"Enkaz", w:16, h:16, target:15, kirik:1, kapi:1, ruh:0, perde:null,
+    zones:[{id:"enkaz_cekirdek",name:"Enkaz çekirdeği",color:"#3a3f46"},
+           {id:"guvenli_oda",  name:"Güvenli oda (öğretim)",color:"#2f4858"}]
+  },
+  sighlik_2a: {
+    name:"Sığlık", w:34, h:32, target:37, kirik:1, kapi:1, ruh:1, perde:"p1",
+    zones:[{id:"avlular",name:"Geniş avlular",color:"#3c4450"},
+           {id:"servis",  name:"Dar servis koridorları",color:"#2c333c"},
+           {id:"cevre_galerisi",name:"Çevre galerisi (ops. döngü)",color:"#2f4a3a"}]
+  },
+  derin_sighlik_2b: {
+    name:"Derin Sığlık", w:34, h:32, target:37, kirik:1, kapi:1, ruh:0, perde:"p2",
+    zones:[{id:"tas_katman",name:"Taş katman",color:"#3b3a30"},
+           {id:"duat_izleri",name:"Duat izleri",color:"#2e3a4d"},
+           {id:"dusey_setpiece",name:"Düşey set-piece",color:"#4a3a2e"}]
+  }
+};
+
+// Marker tipleri — sıra = paletteki sıra. Kaynak: GDD §7.2 listesi (aynen).
+const MARKERS = {
+  oyuncu_baslangic:  {label:"Oyuncu başlangıcı", g:"S", c:"#7ee787", on:"cell", unique:true, reward:false, dwell:0,
+                      hint:"Bölge giriş noktası. Dosya başına tam 1 adet."},
+  kirik_checkpoint:  {label:"Kırık (checkpoint)", g:"K", c:"#58a6ff", on:"cell", reward:true, dwell:1.5,
+                      hint:"Kayıt + soft-fail dönüş + dinlenme odası + landmark (GDD §6.2)."},
+  sembol_kapi:       {label:"Sembol kapı", g:"D", c:"#ffa657", on:"edge", reward:false, dwell:3,
+                      hint:"KENARA konur; kenar otomatik 'door' olur. Bölge başına en fazla 1 (GDD §4.4)."},
+  sembol_kaynak:     {label:"Sembol kaynağı", g:"Y", c:"#ffd479", on:"cell", reward:true, dwell:1,
+                      hint:"Kapının sembolünün öğrenildiği yer. Aynı bölge, kapıya ≤3 dk."},
+  watcher_spawn:     {label:"Watcher spawn", g:"W", c:"#ff7b72", on:"cell", reward:false, dwell:0.5,
+                      hint:"Elle yerleştirilen koreografi noktası (GDD §5.1c). Kırık'a ≥10 m."},
+  cizer_slot:        {label:"Çizer yuvası", g:"C", c:"#d2a8ff", on:"cell", reward:false, dwell:0.75,
+                      hint:"perde: p1=2a kopya, p2=2b çarpıtma, p3=Merkez öngörü. Enkaz'da Çizer YOKTUR."},
+  is_lekesi_ipucu:   {label:"İs lekesi ipucu", g:"İ", c:"#c9d1d9", on:"cell", reward:true, dwell:0.3,
+                      hint:"Sembol-kapı ipucu; N=3 başarısız denemeden sonra belirir (GDD §4.4/§4.6)."},
+  belge:             {label:"Belge / grafiti", g:"B", c:"#79c0ff", on:"cell", reward:true, dwell:1.5,
+                      hint:"tur: tutanak | kronoloji | grafiti. Ölü ucun borcunu metinle öder (§7.7-3)."},
+  ruh_carpismasi:    {label:"Ruh çarpışması", g:"R", c:"#f0f6fc", on:"cell", reward:true, dwell:0.75,
+                      hint:"Yalnız 2 scripted sahne: 2a'da 1, Merkez Eşiği'nde 1 (GDD §4.6)."},
+  opsiyonel_dongu_odul:{label:"Opsiyonel döngü ödülü", g:"O", c:"#3fb950", on:"cell", reward:true, dwell:2,
+                      hint:"Kesilemez süre taşıyıcısı (GDD §7.3)."},
+  anomali_alani:     {label:"Anomali alanı", g:"A", c:"#db6d28", on:"cell", reward:false, dwell:0.5,
+                      hint:"Manyetik ölü nokta. cizer_slot ile ÇAKIŞAMAZ (GDD §7.5 sabotaj kuralı)."}
+};
+const MARKER_ORDER = Object.keys(MARKERS);
+
+const CELL_KINDS = {
+  normal:{label:"Normal koridor", color:"#232a33", pass:true,  gen:true},
+  room:  {label:"Oda / avlu",     color:"#2b333d", pass:true,  gen:true},
+  manual:{label:"Manuel (importer dokunmaz)", color:"#3d2f42", pass:true, gen:false},
+  void:  {label:"Boşluk (labirent dışı)",     color:"#0d1117", pass:false, gen:false}
+};
+
+/* ==========================================================================
+   1. YARDIMCILAR
+   ========================================================================== */
+function mulberry32(a){
+  return function(){
+    a|=0; a=a+0x6D2B79F5|0;
+    let t=Math.imul(a^a>>>15,1|a);
+    t=t+Math.imul(t^t>>>7,61|t)^t;
+    return ((t^t>>>14)>>>0)/4294967296;
+  };
+}
+function clamp(v,a,b){return v<a?a:v>b?b:v}
+function nowISO(){return new Date().toISOString()}
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+function el(id){return document.getElementById(id)}
+
+/* ==========================================================================
+   2. BELGE MODELİ
+   ========================================================================== */
+let doc = null;          // aktif maze belgesi
+let ix  = null;          // türetilmiş indeksler (reindex ile kurulur)
+
+function newId(pfx){ const n = doc.nextId++; return pfx + n; }
+
+/* Kanonik anahtar sırası — dosyanın yüklenip yeniden yazılması diff üretmemeli.
+   (Object.assign(varsayilanlar, girdi) anahtar sırasını bozar; bu yüzden açıkça kuruyoruz.) */
+const META_KEYS=["zoneId","zoneName","gridW","gridH","cellSize","walkSpeed","pivotConvention","seed","braid",
+  "criticalPathTargetMin","explorationFactor","fogMin","fogMax","dwell","criticalPath","zones","notes",
+  "createdAt","modifiedAt"];
+function normMeta(m){
+  const o={}; for(const k of META_KEYS) o[k]=m[k];
+  for(const k of Object.keys(m)) if(!(k in o)) o[k]=m[k];   // bilinmeyen alanlar korunur
+  return o;
+}
+const normCell   = c => ({id:c.id, x:c.x, y:c.y, kind:c.kind, zone:c.zone, locked:c.locked, payoff:c.payoff, note:c.note});
+const normEdge   = e => ({id:e.id, a:e.a, b:e.b, state:e.state, dir:e.dir, note:e.note});
+const normMarker = m => ({id:m.id, type:m.type, cell:m.cell, edge:m.edge, label:m.label, props:m.props||{}});
+
+function defaultDwell(){
+  const d={}; for(const k of MARKER_ORDER) d[k]=MARKERS[k].dwell; return d;
+}
+
+function createDoc(zoneId){
+  const P = ZONE_PRESETS[zoneId] || ZONE_PRESETS.enkaz;
+  const d = {
+    format: FORMAT, version: SCHEMA_VERSION,
+    meta:{
+      zoneId: zoneId, zoneName: P.name,
+      gridW: P.w, gridH: P.h,
+      cellSize: 6.0, walkSpeed: 1.4, pivotConvention:"cell_center_floor",
+      seed: (Math.random()*1e9)|0, braid: LYNCH.loopTarget,
+      criticalPathTargetMin: P.target, explorationFactor: 1.15,
+      fogMin: 40, fogMax: 80,
+      dwell: defaultDwell(),
+      criticalPath: null,
+      zones: JSON.parse(JSON.stringify(P.zones)),
+      notes: "",
+      createdAt: nowISO(), modifiedAt: nowISO()
+    },
+    nextId: 1, cells: [], edges: [], markers: []
+  };
+  doc = d;
+  buildLattice(P.w, P.h);
+  reindex();
+  return d;
+}
+
+// Izgara kafesini (hücreler + TÜM kenarlar) kurar.
+function buildLattice(w,h){
+  doc.cells = []; doc.edges = [];
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++)
+    doc.cells.push({id:newId("c"), x, y, kind:"normal", zone:"", locked:false, payoff:"", note:""});
+  const at=(x,y)=>doc.cells[y*w+x];
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+    if(x+1<w) doc.edges.push({id:newId("e"), a:at(x,y).id, b:at(x+1,y).id, state:"wall", dir:"both", note:""});
+    if(y+1<h) doc.edges.push({id:newId("e"), a:at(x,y).id, b:at(x,y+1).id, state:"wall", dir:"both", note:""});
+  }
+}
+
+/* Indeksler: hızlı erişim tabloları. Belge her değiştiğinde yeniden kurulur. */
+function reindex(){
+  const W=doc.meta.gridW, H=doc.meta.gridH;
+  const cellById=new Map(), cellAt=new Array(W*H).fill(null);
+  for(const c of doc.cells){ cellById.set(c.id,c); if(c.x>=0&&c.x<W&&c.y>=0&&c.y<H) cellAt[c.y*W+c.x]=c; }
+  const edgeById=new Map(), edgeKey=new Map(); // key "x,y,h" | "x,y,v"
+  for(const e of doc.edges){
+    edgeById.set(e.id,e);
+    const A=cellById.get(e.a), B=cellById.get(e.b);
+    if(!A||!B) continue;
+    const k = (B.x>A.x) ? A.x+","+A.y+",h" : A.x+","+A.y+",v";
+    edgeKey.set(k,e);
+  }
+  const markById=new Map(), markByCell=new Map(), markByEdge=new Map(), markByType=new Map();
+  for(const m of doc.markers){
+    markById.set(m.id,m);
+    if(!markByType.has(m.type)) markByType.set(m.type,[]);
+    markByType.get(m.type).push(m);
+    if(m.cell){ if(!markByCell.has(m.cell)) markByCell.set(m.cell,[]); markByCell.get(m.cell).push(m); }
+    if(m.edge){ if(!markByEdge.has(m.edge)) markByEdge.set(m.edge,[]); markByEdge.get(m.edge).push(m); }
+  }
+  ix={W,H,cellById,cellAt,edgeById,edgeKey,markById,markByCell,markByEdge,markByType};
+}
+const cellAt   = (x,y)=> (x<0||y<0||x>=ix.W||y>=ix.H) ? null : ix.cellAt[y*ix.W+x];
+const cellById = id => ix.cellById.get(id)||null;
+const edgeById = id => ix.edgeById.get(id)||null;
+function edgeBetween(x1,y1,x2,y2){
+  if(y1===y2){ const x=Math.min(x1,x2); return ix.edgeKey.get(x+","+y1+",h")||null; }
+  if(x1===x2){ const y=Math.min(y1,y2); return ix.edgeKey.get(x1+","+y+",v")||null; }
+  return null;
+}
+function edgeCells(e){ return [cellById(e.a), cellById(e.b)]; }
+const isPass = c => !!c && CELL_KINDS[c.kind] && CELL_KINDS[c.kind].pass;
+const isGen  = c => !!c && CELL_KINDS[c.kind] && CELL_KINDS[c.kind].gen && !c.locked;
+// Kenar gerçekten geçilir mi? (iki ucu geçilebilir + state açık/kapı)
+function edgeOpen(e){
+  if(!e || e.state==="wall") return false;
+  const [A,B]=edgeCells(e);
+  return isPass(A) && isPass(B);
+}
+// SEMA §7 — kilit-sınır kuralı: ucu üretilemez hücreye değen kenar dokunulmaz.
+function edgeGeneratable(e){
+  const [A,B]=edgeCells(e);
+  return isGen(A) && isGen(B);
+}
+function neighbors(c){
+  const r=[];
+  const d=[[1,0],[-1,0],[0,1],[0,-1]];
+  for(const [dx,dy] of d){ const n=cellAt(c.x+dx,c.y+dy); if(n) r.push(n); }
+  return r;
+}
+// Yönlü geçiş: e kenarından `from` hücresinden çıkılabilir mi? (tek yön kuralı)
+function canTraverse(e, from){
+  if(!edgeOpen(e)) return false;
+  if(e.dir==="both") return true;
+  if(e.dir==="ab") return e.a===from.id;
+  if(e.dir==="ba") return e.b===from.id;
+  return true;
+}
+
+/* ==========================================================================
+   3. ÜRETİM — recursive backtracker + örgü (braid), kilitli bölge korumalı
+   ========================================================================== */
+function generate(seed, braid, opts){
+  opts = opts||{};
+  const rnd = mulberry32(seed>>>0);
+  const gen = doc.cells.filter(isGen);
+  if(!gen.length) return {carved:0, deadEnds:0, braided:0};
+
+  // 1) Üretilebilir kenarları sıfırla (donmuş kenarlara DOKUNMA).
+  for(const e of doc.edges) if(edgeGeneratable(e)) e.state="wall";
+
+  const genSet = new Set(gen.map(c=>c.id));
+  const visited = new Set();
+
+  // 2) Çapa hücreleri: donmuş bir açık kenarla kilitli/manuel tarafa bağlı olanlar.
+  //    Bunlar üretimin kilitli bölgeye dikilmesini sağlar.
+  const anchors = [];
+  for(const c of gen){
+    for(const n of neighbors(c)){
+      if(genSet.has(n.id)) continue;
+      const e = edgeBetween(c.x,c.y,n.x,n.y);
+      if(e && edgeOpen(e)){ anchors.push(c); break; }
+    }
+  }
+
+  const stack=[];
+  const startFrom = c => { visited.add(c.id); stack.length=0; stack.push(c); };
+  let carved=0;
+  const pick = arr => arr[(rnd()*arr.length)|0];
+
+  startFrom(anchors.length ? pick(anchors) : pick(gen));
+  let guard = gen.length*40 + 1000;
+  while(guard-- > 0){
+    if(!stack.length){
+      const rest = gen.filter(c=>!visited.has(c.id));
+      if(!rest.length) break;
+      startFrom(pick(rest));           // ayrık üretim adası (void ile bölünmüş olabilir)
+      continue;
+    }
+    const cur = stack[stack.length-1];
+    const cand = [];
+    for(const n of neighbors(cur)){
+      if(!genSet.has(n.id) || visited.has(n.id)) continue;
+      const e = edgeBetween(cur.x,cur.y,n.x,n.y);
+      if(e && edgeGeneratable(e)) cand.push([n,e]);
+    }
+    if(!cand.length){ stack.pop(); continue; }
+    const [n,e] = pick(cand);
+    e.state="open"; e.dir="both"; carved++;
+    visited.add(n.id); stack.push(n);
+  }
+
+  // 3) Örgü: ölü uçların `braid` oranını aç → döngü üret.
+  const res = braidPass(rnd, braid, genSet);
+  return {carved, deadEnds:res.total, braided:res.opened};
+}
+
+function braidPass(rnd, ratio, genSet){
+  const deg = c => neighbors(c).filter(n=>{
+    const e=edgeBetween(c.x,c.y,n.x,n.y); return e && edgeOpen(e);
+  }).length;
+  let dead = doc.cells.filter(c=>genSet.has(c.id) && isPass(c) && deg(c)===1);
+  const total = dead.length;
+  // Fisher–Yates (tohumlu) — hangi ölü uçların kalacağı deterministik olsun.
+  for(let i=dead.length-1;i>0;i--){ const j=(rnd()*(i+1))|0; const t=dead[i];dead[i]=dead[j];dead[j]=t; }
+  const want = Math.round(total*clamp(ratio,0,1));
+  let opened=0;
+  for(const c of dead){
+    if(opened>=want) break;
+    if(deg(c)!==1) continue;                    // önceki örgü bunu zaten çözmüş olabilir
+    const cand=[];
+    for(const n of neighbors(c)){
+      const e=edgeBetween(c.x,c.y,n.x,n.y);
+      if(e && !edgeOpen(e) && edgeGeneratable(e) && isPass(n)) cand.push(e);
+    }
+    if(!cand.length) continue;
+    const e=cand[(rnd()*cand.length)|0];
+    e.state="open"; e.dir="both"; opened++;
+  }
+  return {total, opened};
+}
+
+/* Örgüyü hedef döngü oranına ayarla.
+   Ölçülen döngü oranı `want` (açılan ölü uç sayısı) içinde monotondur; bu yüzden
+   arama braid kesri üzerinde değil, TAMSAYI ölü uç sayısı üzerinde yapılır —
+   aksi halde kesirli ikili arama iki komşu tamsayı adım arasında sıkışıp
+   ulaşılabilir en iyi orana yakınsayamaz. */
+function autoBraid(seed, target){
+  generate(seed, 0, {});
+  const total = computeMetrics().deadEnds.length;
+  if(!total) return 0;
+  const evalK = k => { generate(seed, k/total, {}); return computeMetrics().loopRatio; };
+  let lo=0, hi=total;
+  while(lo<hi){ const mid=(lo+hi)>>1; if(evalK(mid) < target) lo=mid+1; else hi=mid; }
+  let best={k:lo, d:Math.abs(evalK(lo)-target)};
+  for(const k of [lo-1, lo+1]){
+    if(k<0 || k>total) continue;
+    const d=Math.abs(evalK(k)-target);
+    if(d<best.d) best={k,d};
+  }
+  const r=best.k/total;
+  generate(seed, r, {});
+  return r;
+}
+
+/* ==========================================================================
+   4. GRAF ANALİZİ
+   ========================================================================== */
+// Geçilebilir hücrelerin açık kenarlarla kurduğu komşuluk listesi.
+function buildGraph(){
+  const nodes = doc.cells.filter(isPass);
+  const adj = new Map();
+  for(const c of nodes) adj.set(c.id, []);
+  for(const e of doc.edges){
+    if(!edgeOpen(e)) continue;
+    const [A,B]=edgeCells(e);
+    if(!adj.has(A.id)||!adj.has(B.id)) continue;
+    adj.get(A.id).push({to:B.id, e});
+    adj.get(B.id).push({to:A.id, e});
+  }
+  return {nodes, adj};
+}
+// Yönsüz erişilebilirlik (tek yön kapıları yok sayar — geometri kontrolü).
+function reachableFrom(startId, adj){
+  const seen=new Set([startId]); const q=[startId];
+  while(q.length){ const u=q.pop(); for(const {to} of (adj.get(u)||[])) if(!seen.has(to)){seen.add(to);q.push(to);} }
+  return seen;
+}
+// Yönlü BFS (tek yön kapılarına saygılı) — kritik yol için.
+function bfsPath(startId, goalId){
+  if(startId===goalId) return [startId];
+  const prev=new Map([[startId,null]]); const q=[startId];
+  for(let h=0;h<q.length;h++){
+    const u=q[h], uc=cellById(u);
+    for(const {to,e} of (ix._adj.get(u)||[])){
+      if(prev.has(to)) continue;
+      if(!canTraverse(e, uc)) continue;
+      prev.set(to,u);
+      if(to===goalId){ const p=[]; let k=to; while(k!=null){p.push(k);k=prev.get(k);} return p.reverse(); }
+      q.push(to);
+    }
+  }
+  return null;
+}
+// Köprüler (bridge) — Tarjan, iteratif. Köprü OLMAYAN kenarlar döngü üstündedir.
+function findBridges(adj, nodes){
+  const disc=new Map(), low=new Map(), bridges=new Set();
+  let timer=0;
+  for(const root of nodes){
+    if(disc.has(root.id)) continue;
+    // stack frame: [node, parentEdgeId, iterator index]
+    const st=[[root.id, null, 0]];
+    disc.set(root.id, timer); low.set(root.id, timer); timer++;
+    while(st.length){
+      const fr=st[st.length-1];
+      const list=adj.get(fr[0])||[];
+      if(fr[2] < list.length){
+        const {to,e}=list[fr[2]++];
+        if(e.id===fr[1]) continue;                       // ebeveyn kenarı
+        if(disc.has(to)){ low.set(fr[0], Math.min(low.get(fr[0]), disc.get(to))); }
+        else{
+          disc.set(to,timer); low.set(to,timer); timer++;
+          st.push([to, e.id, 0]);
+        }
+      } else {
+        st.pop();
+        if(st.length){
+          const p=st[st.length-1];
+          low.set(p[0], Math.min(low.get(p[0]), low.get(fr[0])));
+          if(low.get(fr[0]) > disc.get(p[0])) bridges.add(fr[1]);
+        }
+      }
+    }
+  }
+  return bridges;
+}
+
+/* ==========================================================================
+   5. METRİKLER — GDD §7.1 / §7.3 ölçümleri
+   ========================================================================== */
+let M = null;   // son hesaplanan metrik seti
+
+function computeMetrics(){
+  const {nodes, adj} = buildGraph();
+  ix._adj = adj;
+
+  const deg = new Map();
+  for(const c of nodes) deg.set(c.id, (adj.get(c.id)||[]).length);
+
+  // --- başlangıç ve erişilebilirlik
+  const startM = (ix.markByType.get("oyuncu_baslangic")||[])[0];
+  const startCell = startM ? cellById(startM.cell) : null;
+  const reach = (startCell && isPass(startCell)) ? reachableFrom(startCell.id, adj) : null;
+  const scope = reach ? nodes.filter(c=>reach.has(c.id)) : nodes;
+  const unreachable = reach ? nodes.filter(c=>!reach.has(c.id)) : [];
+
+  // --- döngü / dal oranı: köprü olmayan kenara değen hücre "döngü çekirdeği"ndedir
+  const bridges = findBridges(adj, nodes);
+  let loopCells = 0;
+  const loopSet = new Set();
+  for(const c of scope){
+    const inLoop = (adj.get(c.id)||[]).some(x=>!bridges.has(x.e.id));
+    if(inLoop){ loopCells++; loopSet.add(c.id); }
+  }
+  const total = scope.length || 1;
+  const loopRatio = loopCells/total;
+
+  // --- ölü uçlar
+  const deadEnds = scope.filter(c=>deg.get(c.id)===1);
+  const isPaid = c => {
+    if((c.payoff||"").trim()) return true;
+    const ms = ix.markByCell.get(c.id)||[];
+    return ms.some(m=>MARKERS[m.type] && MARKERS[m.type].reward);
+  };
+  const unpaid = deadEnds.filter(c=>!isPaid(c));
+  const isolated = scope.filter(c=>deg.get(c.id)===0);
+
+  // --- 60 sn kuralı: ayırt edici öğesiz koridor koşuları
+  const secPerCell = doc.meta.cellSize / Math.max(0.1, doc.meta.walkSpeed);
+  const corrSeen = new Set(); const badRuns=[];
+  for(const c of scope){
+    if(deg.get(c.id)!==2 || corrSeen.has(c.id)) continue;
+    const run=[]; const q=[c.id]; corrSeen.add(c.id);
+    while(q.length){
+      const u=q.pop(); const uc=cellById(u); run.push(uc);
+      for(const {to} of (adj.get(u)||[])){
+        if(corrSeen.has(to) || deg.get(to)!==2) continue;
+        corrSeen.add(to); q.push(to);
+      }
+    }
+    // "ayırt edici öğe" = dünyada görülen bir şey: marker, oda/avlu ya da ödeme (manzara/grafiti).
+    // Tasarımcı notu (`note`) sayılmaz — oyuncu onu görmez.
+    const featured = run.some(rc =>
+      (ix.markByCell.get(rc.id)||[]).length>0 || rc.kind==="room" || (rc.payoff||"").trim());
+    const sec = run.length*secPerCell;
+    if(!featured && sec > LYNCH.corridorSec) badRuns.push({cells:run, sec});
+  }
+
+  // --- kritik yol
+  const cp = computeCriticalPath();
+
+  // --- yoğunluklar
+  const counts={}; for(const t of MARKER_ORDER) counts[t]=(ix.markByType.get(t)||[]).length;
+
+  M = {
+    nodes, adj, deg, bridges, loopSet,
+    passTotal: nodes.length, scopeTotal: scope.length,
+    loopCells, loopRatio, branchRatio: 1-loopRatio,
+    deadEnds, unpaid, isolated, unreachable, badRuns,
+    startCell, cp, counts, secPerCell,
+    openEdges: doc.edges.filter(edgeOpen).length,
+    doors: doc.edges.filter(e=>e.state==="door").length,
+    oneWays: doc.edges.filter(e=>edgeOpen(e)&&e.dir!=="both").length
+  };
+  return M;
+}
+
+/* Kritik yol: sıralı marker zinciri → yönlü BFS parçaları. */
+function computeCriticalPath(){
+  const out={waypoints:[], cells:[], ok:false, err:null, walkMin:0, dwellMin:0, totalMin:0, legs:[]};
+  let wp = doc.meta.criticalPath;
+  if(!Array.isArray(wp) || !wp.length){
+    // otomatik türetme: başlangıç → sembol kaynak(ları) → sembol kapı
+    const s=(ix.markByType.get("oyuncu_baslangic")||[])[0];
+    const src=(ix.markByType.get("sembol_kaynak")||[]);
+    const door=(ix.markByType.get("sembol_kapi")||[]);
+    wp=[]; if(s) wp.push(s.id);
+    for(const m of src) wp.push(m.id);
+    for(const m of door) wp.push(m.id);
+  }
+  const pts=[];
+  for(const id of wp){
+    const m=ix.markById.get(id); if(!m) continue;
+    let c=null;
+    if(m.cell) c=cellById(m.cell);
+    else if(m.edge){ const e=edgeById(m.edge); if(e) c=cellById(e.a); }
+    if(c && isPass(c)) pts.push({m, c});
+  }
+  out.waypoints=pts;
+  if(pts.length<2){ out.err="Kritik yol için en az 2 durak gerekir (oyuncu_baslangic + sembol_kapi)."; return out; }
+
+  const cells=[pts[0].c.id];
+  for(let i=0;i<pts.length-1;i++){
+    const p=bfsPath(pts[i].c.id, pts[i+1].c.id);
+    if(!p){ out.err="Duraklar arasında yol yok: "+(pts[i].m.label||pts[i].m.type)+" → "+(pts[i+1].m.label||pts[i+1].m.type); return out; }
+    out.legs.push({from:pts[i], to:pts[i+1], len:p.length-1});
+    for(let k=1;k<p.length;k++) cells.push(p[k]);
+  }
+  out.cells=cells; out.ok=true;
+
+  const steps = cells.length-1;
+  out.walkMin = steps * doc.meta.cellSize / Math.max(0.1,doc.meta.walkSpeed) / 60;
+  out.exploreMin = out.walkMin * Math.max(1, doc.meta.explorationFactor||1);
+  // yoldaki (ve yola komşu) marker'ların duraklama payı
+  const onPath=new Set(cells); const counted=new Set();
+  let dwell=0;
+  for(const m of doc.markers){
+    let c=null;
+    if(m.cell) c=cellById(m.cell);
+    else if(m.edge){ const e=edgeById(m.edge); if(e){ const [A,B]=edgeCells(e); c = onPath.has(A.id)?A:(onPath.has(B.id)?B:A); } }
+    if(!c || !onPath.has(c.id) || counted.has(m.id)) continue;
+    counted.add(m.id);
+    dwell += (doc.meta.dwell && doc.meta.dwell[m.type]!=null) ? doc.meta.dwell[m.type] : (MARKERS[m.type]?MARKERS[m.type].dwell:0);
+  }
+  out.dwellMin=dwell;
+  out.totalMin=out.exploreMin+dwell;
+  return out;
+}
+
+/* ==========================================================================
+   6. DOĞRULAMA — canon kuralları
+   ========================================================================== */
+let ISSUES=[];
+function validate(){
+  const R=[];
+  const add=(level,tag,msg,focus)=>R.push({level,tag,msg,focus});
+  // Aynı türden çok sayıda bulgu listeyi boğmasın: 3'ten fazlaysa tek satırda grupla,
+  // tıklama sırayla her birine odaklanır.
+  const addMany=(level,tag,one,summary,focuses)=>{
+    if(focuses.length===0) return;
+    if(focuses.length<=3) focuses.forEach((f,i)=>add(level,tag,one(i),f));
+    else R.push({level,tag,msg:summary(focuses.length),focus:focuses[0],items:focuses});
+  };
+  const Z=doc.meta.zoneId, P=ZONE_PRESETS[Z]||null;
+  const c=M.counts;
+
+  /* --- yapısal --- */
+  if(c.oyuncu_baslangic===0) add("err","§7.3","Bölgede <b>oyuncu_baslangic</b> yok — kritik yol ve erişilebilirlik ölçülemez.",null);
+  if(c.oyuncu_baslangic>1)   add("err","ŞEMA","Birden fazla <b>oyuncu_baslangic</b> var ("+c.oyuncu_baslangic+"). Dosya başına tam 1 olmalı.",{t:"marker",id:(ix.markByType.get("oyuncu_baslangic")||[])[1].id});
+
+  for(const m of doc.markers){
+    const def=MARKERS[m.type];
+    if(!def){ add("err","ŞEMA","Bilinmeyen marker tipi: "+esc(m.type),{t:"marker",id:m.id}); continue; }
+    if(def.on==="cell"){
+      const cc=cellById(m.cell);
+      if(!cc) add("err","ŞEMA",def.label+" (<code>"+m.id+"</code>) geçersiz hücreye bağlı — öksüz marker.",{t:"marker",id:m.id});
+      else if(!isPass(cc)) add("err","ŞEMA",def.label+" geçilemez hücrede ("+cc.x+","+cc.y+", <i>"+cc.kind+"</i>).",{t:"cell",id:cc.id});
+    }else{
+      const ee=edgeById(m.edge);
+      if(!ee) add("err","ŞEMA",def.label+" (<code>"+m.id+"</code>) geçersiz kenara bağlı — öksüz marker.",{t:"marker",id:m.id});
+      else if(ee.state!=="door") add("err","§4.4","<b>sembol_kapi</b> <code>door</code> olmayan kenarda (<i>"+ee.state+"</i>). Kenar kapı olmalı.",{t:"edge",id:ee.id});
+    }
+  }
+
+  if(M.unreachable.length)
+    add("err","§7.2",M.unreachable.length+" geçilebilir hücre başlangıçtan <b>erişilemiyor</b>. Kilitli bölge dikişi kopmuş olabilir (SEMA §7).",{t:"cell",id:M.unreachable[0].id});
+  if(M.isolated.length)
+    add("warn","§7.2",M.isolated.length+" hücrenin hiç açık kenarı yok (izole).",{t:"cell",id:M.isolated[0].id});
+
+  /* --- GDD §7.5 sabotaj dönüşüm kuralı --- */
+  const anoms=ix.markByType.get("anomali_alani")||[];
+  const cizers=ix.markByType.get("cizer_slot")||[];
+  for(const a of anoms){
+    const ac=cellById(a.cell); if(!ac) continue;
+    const r=(a.props&&a.props.radius!=null)?+a.props.radius:2;
+    for(const z of cizers){
+      const zc=cellById(z.cell); if(!zc) continue;
+      const d=Math.hypot(ac.x-zc.x, ac.y-zc.y);
+      if(d<=r) add("err","§7.5","<b>Sabotaj çakışması:</b> anomali alanı ("+ac.x+","+ac.y+") ile Çizer yuvası ("+zc.x+","+zc.y+") aynı mekân parçasında. Araçlar dönüşümlü sabote edilir, aynı anda değil.",{t:"cell",id:zc.id});
+    }
+  }
+
+  /* --- sembol kapı / kaynak eşleşmesi (§4.4) --- */
+  const doors=ix.markByType.get("sembol_kapi")||[];
+  const srcs =ix.markByType.get("sembol_kaynak")||[];
+  if(doors.length>1) add("warn","§4.4","Bölgede "+doors.length+" sembol-kapı var. Sürtünme tavanı: <b>bölge başına en fazla 1</b>.",{t:"marker",id:doors[1].id});
+  for(const d of doors){
+    const sid=(d.props||{}).symbolId||"";
+    if(!sid){ add("err","§4.4","Sembol-kapının <code>symbolId</code>'si boş.",{t:"marker",id:d.id}); continue; }
+    const mine=srcs.filter(s=>((s.props||{}).symbolId||"")===sid);
+    if(!mine.length){ add("err","§4.4","<code>"+esc(sid)+"</code> sembolünün <b>kaynağı yok</b> — anahtar oyuncunun kafasında taşınır, bulunabilir olmalı.",{t:"marker",id:d.id}); continue; }
+    if(mine.length>1) add("warn","§4.4","<code>"+esc(sid)+"</code> için "+mine.length+" kaynak var; tek olması beklenir.",{t:"marker",id:mine[1].id});
+    const de=edgeById(d.edge);
+    if(de && M.cp){
+      const dc=cellById(de.a);
+      for(const s of mine){
+        const sc=cellById(s.cell); if(!sc||!dc) continue;
+        const p=bfsPath(sc.id, dc.id);
+        if(!p){ add("err","§4.4","Sembol kaynağından kapıya yol yok.",{t:"marker",id:s.id}); continue; }
+        const mins=(p.length-1)*doc.meta.cellSize/Math.max(0.1,doc.meta.walkSpeed)/60;
+        if(mins>LYNCH.symbolWalkMaxMin)
+          add("warn","§4.4","Sembol kaynağı → kapı yürümesi "+mins.toFixed(1)+" dk (tavan "+LYNCH.symbolWalkMaxMin+" dk).",{t:"marker",id:s.id});
+      }
+    }
+  }
+  if(srcs.length && !doors.length) add("warn","§4.4","Sembol kaynağı var ama bölgede sembol-kapı yok.",{t:"marker",id:srcs[0].id});
+
+  /* --- Lynch §7.1 --- */
+  const lr=M.loopRatio;
+  if(M.scopeTotal>20 && Math.abs(lr-LYNCH.loopTarget)>LYNCH.loopTol)
+    add("warn","§7.1-3","Döngü oranı <b>%"+(lr*100).toFixed(0)+"</b> — hedef %"+(LYNCH.loopTarget*100)+" (±"+(LYNCH.loopTol*100)+"). Örgü oranını ayarla.",null);
+  addMany("warn","§7.1-3",
+    i=>"Ödemeyen ölü uç ("+M.unpaid[i].x+","+M.unpaid[i].y+"): Kırık/sembol/lore/manzara ile ödemelidir.",
+    n=>"<b>"+n+" ödemeyen ölü uç</b> — her ölü uç Kırık/sembol/lore/manzara ile ödemelidir. Tıkla: sıradakine git.",
+    M.unpaid.map(dc=>({t:"cell",id:dc.id})));
+  addMany("warn","§7.1-1",
+    i=>"Ayırt edici öğesiz koridor: "+M.badRuns[i].cells.length+" hücre ≈ "+M.badRuns[i].sec.toFixed(0)+" sn (tavan "+LYNCH.corridorSec+" sn).",
+    n=>"<b>"+n+" ayırt edici öğesiz koridor</b> 60 sn tavanını aşıyor — landmark/işaret/oda ekle. Tıkla: sıradakine git.",
+    M.badRuns.map(r=>({t:"cell",id:r.cells[0].id})));
+
+  /* --- kritik yol süresi §7.3 --- */
+  if(M.cp.err) add("warn","§7.3","Kritik yol hesaplanamadı: "+esc(M.cp.err),null);
+  else{
+    const t=doc.meta.criticalPathTargetMin, v=M.cp.totalMin;
+    if(t>0 && Math.abs(v-t)/t > LYNCH.pathTolMin)
+      add(v<t?"warn":"info","§7.3","Kritik yol tahmini <b>"+v.toFixed(1)+" dk</b>, bölge bütçesi "+t+" dk"+(v<t?" — <b>bütçenin altında</b>. Süre kesilemez (min 2 saat kuralı).":" — bütçenin üstünde."),null);
+  }
+
+  /* --- bölgeye özel canon (§7.3 tablosu) --- */
+  if(P){
+    if(c.kirik_checkpoint!==P.kirik)
+      add(c.kirik_checkpoint<P.kirik?"warn":"info","§6.2",doc.meta.zoneName+" bölgesinde "+c.kirik_checkpoint+" Kırık var; zincir tablosu "+P.kirik+" öngörüyor.",null);
+    if(c.sembol_kapi!==P.kapi)
+      add("warn","§7.3",doc.meta.zoneName+" bölgesinde "+c.sembol_kapi+" sembol-kapı var; tablo "+P.kapi+" öngörüyor.",null);
+    if(c.ruh_carpismasi!==P.ruh)
+      add("warn","§4.6",doc.meta.zoneName+" bölgesinde "+c.ruh_carpismasi+" Ruh Çarpışması var; tablo "+P.ruh+" öngörüyor (toplam yalnız 2 scripted sahne).",null);
+    for(const z of cizers){
+      const per=(z.props||{}).perde||"";
+      if(P.perde===null) add("err","§7.3","Enkaz'da <b>Çizer yoktur</b> — cizer_slot burada olamaz.",{t:"marker",id:z.id});
+      else if(!per) add("warn","§5.2","Çizer yuvasının <code>perde</code>'si boş (p1/p2/p3).",{t:"marker",id:z.id});
+      else if(per!==P.perde) add("warn","§5.2","Çizer yuvası <code>"+esc(per)+"</code>, bu bölge <code>"+P.perde+"</code> perdesidir.",{t:"marker",id:z.id});
+    }
+  }
+
+  /* --- Watcher koreografisi §5.1c --- */
+  const kiriks=ix.markByType.get("kirik_checkpoint")||[];
+  for(const w of ix.markByType.get("watcher_spawn")||[]){
+    const wc=cellById(w.cell); if(!wc) continue;
+    for(const k of kiriks){
+      const kc=cellById(k.cell); if(!kc) continue;
+      const dm=Math.hypot(wc.x-kc.x,wc.y-kc.y)*doc.meta.cellSize;
+      if(dm<LYNCH.kirikSafeM)
+        add("warn","§6.2","Watcher spawn'ı Kırık'a "+dm.toFixed(1)+" m — Kırık dinlenme odasıdır (aydınlık, sissiz). ≥"+LYNCH.kirikSafeM+" m olmalı.",{t:"marker",id:w.id});
+    }
+    if(M.cp.ok && M.cp.cells.length){
+      let best=1e9;
+      for(const cid of M.cp.cells){ const pc=cellById(cid); if(pc) best=Math.min(best, Math.hypot(wc.x-pc.x,wc.y-pc.y)*doc.meta.cellSize); }
+      if(best>doc.meta.fogMax)
+        add("warn","§5.1c","Watcher spawn'ı kritik yoldan "+best.toFixed(0)+" m — sis bandı ("+doc.meta.fogMin+"–"+doc.meta.fogMax+" m) dışında, hiç görülmeyebilir.",{t:"marker",id:w.id});
+    }
+  }
+
+  /* --- bilgi --- */
+  const lockedN=doc.cells.filter(x=>x.locked).length;
+  if(lockedN) add("info","SEMA §7",lockedN+" hücre kilitli — yeniden üretim bu bölgeye ve sınır kenarlarına dokunmaz.",null);
+  const manualN=doc.cells.filter(x=>x.kind==="manual").length;
+  if(manualN) add("info","§7.2",manualN+" hücre <code>manual</code> — Godot importer bunları üretmez (Merkez dikişi).",null);
+
+  ISSUES=R; return R;
+}
+
+/* ==========================================================================
+   7. ÇİZİM
+   ========================================================================== */
+const cv=el("cv"); const ctx=cv.getContext("2d");
+const view={z:26, px:40, py:40};
+const VIEW={zone:true, markers:true, path:true, warn:true, locked:true, oneway:true, coords:false, ids:false, opendots:false, kind:true};
+let hover={cell:null, edge:null};
+let sel={t:null, id:null};      // seçim: cell | edge | marker
+let flash={t:null, id:null, until:0};
+let needDraw=true;
+function invalidate(){needDraw=true}
+
+function resizeCanvas(){
+  const r=cv.getBoundingClientRect(), d=window.devicePixelRatio||1;
+  cv.width=Math.max(1,Math.round(r.width*d)); cv.height=Math.max(1,Math.round(r.height*d));
+  ctx.setTransform(d,0,0,d,0,0); invalidate();
+}
+const S = (gx)=> gx*view.z + view.px;      // grid → ekran
+const T = (gy)=> gy*view.z + view.py;
+const gX= (sx)=> (sx-view.px)/view.z;      // ekran → grid
+const gY= (sy)=> (sy-view.py)/view.z;
+
+function zoneColor(id){ const z=(doc.meta.zones||[]).find(z=>z.id===id); return z?z.color:null; }
+
+function draw(){
+  const w=cv.clientWidth, h=cv.clientHeight, z=view.z;
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle="#0d1117"; ctx.fillRect(0,0,w,h);
+  if(!doc) return;
+
+  const x0=Math.max(0,Math.floor(gX(0))-1), x1=Math.min(ix.W-1,Math.ceil(gX(w))+1);
+  const y0=Math.max(0,Math.floor(gY(0))-1), y1=Math.min(ix.H-1,Math.ceil(gY(h))+1);
+
+  // --- zemin
+  for(let y=y0;y<=y1;y++) for(let x=x0;x<=x1;x++){
+    const c=cellAt(x,y); if(!c) continue;
+    let col = CELL_KINDS[c.kind].color;
+    if(VIEW.zone && c.zone){ const zc=zoneColor(c.zone); if(zc) col=zc; }
+    ctx.fillStyle=col;
+    ctx.fillRect(S(x),T(y),z+0.6,z+0.6);
+    if(VIEW.kind && c.kind==="room"){ ctx.fillStyle="#ffffff08"; ctx.fillRect(S(x),T(y),z,z); }
+    if(VIEW.kind && c.kind==="manual"){
+      ctx.strokeStyle="#d2a8ff66"; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(S(x)+2,T(y)+2); ctx.lineTo(S(x)+z-2,T(y)+z-2); ctx.stroke();
+    }
+  }
+
+  // --- uyarı katmanı (zeminin üstü, duvarların altı)
+  if(VIEW.warn && M){
+    ctx.fillStyle="#f8514922";
+    for(const c of M.unreachable) if(c.x>=x0&&c.x<=x1&&c.y>=y0&&c.y<=y1) ctx.fillRect(S(c.x),T(c.y),z,z);
+    ctx.fillStyle="#d2992222";
+    for(const r of M.badRuns) for(const c of r.cells) if(c.x>=x0&&c.x<=x1&&c.y>=y0&&c.y<=y1) ctx.fillRect(S(c.x),T(c.y),z,z);
+  }
+
+  // --- kilit tarama deseni
+  if(VIEW.locked){
+    ctx.save(); ctx.strokeStyle="#f8514955"; ctx.lineWidth=1;
+    for(let y=y0;y<=y1;y++) for(let x=x0;x<=x1;x++){
+      const c=cellAt(x,y); if(!c||!c.locked) continue;
+      ctx.beginPath();
+      for(let k=-z;k<z;k+=5){ ctx.moveTo(S(x)+k,T(y)+z); ctx.lineTo(S(x)+k+z,T(y)); }
+      ctx.save(); ctx.beginPath(); ctx.rect(S(x),T(y),z,z); ctx.clip();
+      ctx.beginPath();
+      for(let k=-z;k<z;k+=5){ ctx.moveTo(S(x)+k,T(y)+z); ctx.lineTo(S(x)+k+z,T(y)); }
+      ctx.stroke(); ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  // --- kritik yol
+  if(VIEW.path && M && M.cp && M.cp.ok && M.cp.cells.length>1){
+    ctx.strokeStyle="#58a6ff55"; ctx.lineWidth=Math.max(3,z*0.34);
+    ctx.lineJoin="round"; ctx.lineCap="round"; ctx.beginPath();
+    M.cp.cells.forEach((cid,i)=>{ const c=cellById(cid); if(!c) return;
+      const X=S(c.x)+z/2, Y=T(c.y)+z/2; i?ctx.lineTo(X,Y):ctx.moveTo(X,Y); });
+    ctx.stroke();
+  }
+
+  // --- ızgara ince çizgiler
+  if(z>=14){
+    ctx.strokeStyle="#ffffff08"; ctx.lineWidth=1; ctx.beginPath();
+    for(let x=x0;x<=x1+1;x++){ ctx.moveTo(S(x),T(y0)); ctx.lineTo(S(x),T(y1+1)); }
+    for(let y=y0;y<=y1+1;y++){ ctx.moveTo(S(x0),T(y)); ctx.lineTo(S(x1+1),T(y)); }
+    ctx.stroke();
+  }
+
+  // --- açık kenar noktaları (hata ayıklama görünümü)
+  if(VIEW.opendots){
+    ctx.fillStyle="#3fb95055";
+    for(const e of doc.edges){ if(!edgeOpen(e)) continue; const p=edgeMid(e); if(!p) continue;
+      ctx.beginPath(); ctx.arc(p.x,p.y,2,0,7); ctx.fill(); }
+  }
+
+  // --- duvarlar
+  const lw=Math.max(1.4, z*0.115);
+  ctx.lineCap="butt";
+  ctx.strokeStyle="#77808c"; ctx.lineWidth=lw; ctx.beginPath();
+  for(const e of doc.edges){
+    if(e.state==="door" || edgeOpen(e)) continue;
+    const [A,B]=edgeCells(e); if(!A||!B) continue;
+    if(!isPass(A) && !isPass(B)) continue;
+    if(A.x<x0-1||A.x>x1+1||A.y<y0-1||A.y>y1+1) continue;
+    strokeEdge(A,B);
+  }
+  // dış sınır (geçilebilir hücrelerin ızgara kenarı)
+  for(let y=y0;y<=y1;y++) for(let x=x0;x<=x1;x++){
+    const c=cellAt(x,y); if(!isPass(c)) continue;
+    if(x===0)      { ctx.moveTo(S(0),T(y)); ctx.lineTo(S(0),T(y+1)); }
+    if(x===ix.W-1) { ctx.moveTo(S(ix.W),T(y)); ctx.lineTo(S(ix.W),T(y+1)); }
+    if(y===0)      { ctx.moveTo(S(x),T(0)); ctx.lineTo(S(x+1),T(0)); }
+    if(y===ix.H-1) { ctx.moveTo(S(x),T(ix.H)); ctx.lineTo(S(x+1),T(ix.H)); }
+  }
+  ctx.stroke();
+
+  // --- kapılar
+  ctx.strokeStyle="#ffa657"; ctx.lineWidth=Math.max(2,z*0.16);
+  for(const e of doc.edges){
+    if(e.state!=="door") continue;
+    const [A,B]=edgeCells(e); if(!A||!B) continue;
+    ctx.beginPath(); strokeEdgeGap(A,B,0.34); ctx.stroke();
+  }
+
+  // --- tek yön okları
+  if(VIEW.oneway){
+    ctx.fillStyle="#7ee787";
+    for(const e of doc.edges){
+      if(!edgeOpen(e)||e.dir==="both") continue;
+      const [A,B]=edgeCells(e); if(!A||!B) continue;
+      const from = e.dir==="ab"?A:B, to = e.dir==="ab"?B:A;
+      const fx=S(from.x)+z/2, fy=T(from.y)+z/2, tx=S(to.x)+z/2, ty=T(to.y)+z/2;
+      const mx=(fx+tx)/2, my=(fy+ty)/2, ang=Math.atan2(ty-fy,tx-fx), s=Math.max(4,z*0.22);
+      ctx.save(); ctx.translate(mx,my); ctx.rotate(ang); ctx.beginPath();
+      ctx.moveTo(s,0); ctx.lineTo(-s*0.6,s*0.62); ctx.lineTo(-s*0.6,-s*0.62); ctx.closePath(); ctx.fill(); ctx.restore();
+    }
+  }
+
+  // --- ödemeyen ölü uç halkaları
+  if(VIEW.warn && M){
+    ctx.strokeStyle="#d2992299"; ctx.lineWidth=1.2; ctx.beginPath();
+    for(const c of M.unpaid){                       // küçük "borç" işareti — marker'larla karışmasın
+      const X=S(c.x)+z/2, Y=T(c.y)+z/2, r=Math.max(2.5,z*0.14);
+      ctx.moveTo(X-r,Y); ctx.lineTo(X,Y-r); ctx.lineTo(X+r,Y); ctx.lineTo(X,Y+r); ctx.closePath();
+    }
+    ctx.stroke();
+  }
+
+  // --- marker'lar
+  if(VIEW.markers){
+    for(const m of doc.markers){
+      const def=MARKERS[m.type]; if(!def) continue;
+      let X,Y;
+      if(def.on==="cell"){ const c=cellById(m.cell); if(!c) continue; X=S(c.x)+z/2; Y=T(c.y)+z/2; }
+      else { const p=edgeMid(edgeById(m.edge)); if(!p) continue; X=p.x; Y=p.y; }
+      if(m.type==="anomali_alani"){
+        const r=((m.props&&m.props.radius!=null)?+m.props.radius:2);
+        ctx.fillStyle="#db6d2818"; ctx.strokeStyle="#db6d2866"; ctx.lineWidth=1;
+        ctx.beginPath(); ctx.arc(X,Y,(r+0.5)*z,0,7); ctx.fill(); ctx.stroke();
+      }
+      const R=Math.max(5, z*0.30);
+      ctx.beginPath(); ctx.arc(X,Y,R,0,7);
+      ctx.fillStyle=def.c; ctx.fill();
+      ctx.lineWidth=1.2; ctx.strokeStyle="#0d1117"; ctx.stroke();
+      if(z>=16){
+        ctx.fillStyle="#0d1117"; ctx.font="700 "+Math.round(R*1.25)+"px ui-monospace,monospace";
+        ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(def.g,X,Y+0.5);
+      }
+      if(m.type==="cizer_slot" && z>=18 && (m.props||{}).perde){
+        ctx.fillStyle="#d2a8ff"; ctx.font="600 9px ui-monospace,monospace"; ctx.textAlign="center";
+        ctx.fillText(m.props.perde, X, Y-R-3);
+      }
+    }
+  }
+
+  // --- koordinat / id etiketleri
+  if((VIEW.coords||VIEW.ids) && z>=26){
+    ctx.font="9px ui-monospace,monospace"; ctx.textAlign="left"; ctx.textBaseline="top"; ctx.fillStyle="#ffffff35";
+    for(let y=y0;y<=y1;y++) for(let x=x0;x<=x1;x++){
+      const c=cellAt(x,y); if(!c) continue;
+      ctx.fillText(VIEW.ids?c.id:(x+","+y), S(x)+2, T(y)+2);
+    }
+  }
+
+  // --- seçim / flaş / hover
+  if(sel.t) outline(sel, "#58a6ff", 2.2);
+  if(flash.t && performance.now()<flash.until){ outline(flash, "#f0f6fc", 3); invalidate(); }
+  if(hover.cell && TOOL!=="edge"){ ctx.strokeStyle="#ffffff44"; ctx.lineWidth=1.5;
+    ctx.strokeRect(S(hover.cell.x)+1,T(hover.cell.y)+1,z-2,z-2); }
+  if(hover.edge && TOOL==="edge"){ const [A,B]=edgeCells(hover.edge);
+    if(A&&B){ ctx.strokeStyle="#58a6ff"; ctx.lineWidth=Math.max(3,z*0.16); ctx.beginPath(); strokeEdge(A,B); ctx.stroke(); } }
+}
+
+function strokeEdge(A,B){
+  const z=view.z;
+  if(A.y===B.y){ const x=Math.max(A.x,B.x); ctx.moveTo(S(x),T(A.y)); ctx.lineTo(S(x),T(A.y+1)); }
+  else          { const y=Math.max(A.y,B.y); ctx.moveTo(S(A.x),T(y)); ctx.lineTo(S(A.x+1),T(y)); }
+}
+function strokeEdgeGap(A,B,gap){
+  const z=view.z, g=(1-gap)/2;
+  if(A.y===B.y){ const x=Math.max(A.x,B.x);
+    ctx.moveTo(S(x),T(A.y)); ctx.lineTo(S(x),T(A.y+g));
+    ctx.moveTo(S(x),T(A.y+1-g)); ctx.lineTo(S(x),T(A.y+1)); }
+  else{ const y=Math.max(A.y,B.y);
+    ctx.moveTo(S(A.x),T(y)); ctx.lineTo(S(A.x+g),T(y));
+    ctx.moveTo(S(A.x+1-g),T(y)); ctx.lineTo(S(A.x+1),T(y)); }
+}
+function edgeMid(e){
+  if(!e) return null; const [A,B]=edgeCells(e); if(!A||!B) return null;
+  const z=view.z;
+  return A.y===B.y ? {x:S(Math.max(A.x,B.x)), y:T(A.y)+z/2}
+                   : {x:S(A.x)+z/2, y:T(Math.max(A.y,B.y))};
+}
+function outline(s,color,lw){
+  const z=view.z;
+  ctx.strokeStyle=color; ctx.lineWidth=lw;
+  if(s.t==="cell"){ const c=cellById(s.id); if(c) ctx.strokeRect(S(c.x)+1,T(c.y)+1,z-2,z-2); }
+  else if(s.t==="edge"){ const e=edgeById(s.id); if(e){ const [A,B]=edgeCells(e); if(A&&B){ ctx.beginPath(); strokeEdge(A,B); ctx.stroke(); } } }
+  else if(s.t==="marker"){ const m=ix.markById.get(s.id); if(m){
+      let X,Y; const def=MARKERS[m.type];
+      if(def && def.on==="cell"){ const c=cellById(m.cell); if(!c) return; X=S(c.x)+z/2; Y=T(c.y)+z/2; }
+      else { const p=edgeMid(edgeById(m.edge)); if(!p) return; X=p.x; Y=p.y; }
+      ctx.beginPath(); ctx.arc(X,Y,Math.max(8,z*0.42),0,7); ctx.stroke(); } }
+}
+function focusOn(s){
+  if(!s) return;
+  let c=null;
+  if(s.t==="cell") c=cellById(s.id);
+  else if(s.t==="edge"){ const e=edgeById(s.id); if(e) c=cellById(e.a); }
+  else if(s.t==="marker"){ const m=ix.markById.get(s.id); if(m) c = m.cell?cellById(m.cell):(edgeById(m.edge)?cellById(edgeById(m.edge).a):null); }
+  if(c){ view.px = cv.clientWidth/2 - (c.x+0.5)*view.z; view.py = cv.clientHeight/2 - (c.y+0.5)*view.z; }
+  sel={t:s.t,id:s.id}; flash={t:s.t,id:s.id,until:performance.now()+1400};
+  renderInspector(); invalidate();
+}
+function fitView(){
+  const pad=24, w=cv.clientWidth-pad*2, h=cv.clientHeight-pad*2;
+  view.z=clamp(Math.min(w/ix.W, h/ix.H), 4, 90);
+  view.px=pad+(w-ix.W*view.z)/2; view.py=pad+(h-ix.H*view.z)/2;
+  invalidate();
+}
+(function loop(){ if(needDraw){needDraw=false; draw();} requestAnimationFrame(loop); })();
+
+/* ==========================================================================
+   8. ARAÇLAR VE DÜZENLEME
+   ========================================================================== */
+const TOOLS=[
+  {id:"select",label:"Seç",       key:"V", hint:"Hücre / kenar / marker seç ve sağ paneldeki müfettişten düzenle."},
+  {id:"edge",  label:"Kenar",     key:"E", hint:"Kenara tıkla: duvar → açık → kapı → duvar. <b>Shift+tık</b>: tek yön (çift ↔ a→b ↔ b→a). Sürükleyerek boya."},
+  {id:"marker",label:"Marker",    key:"M", hint:"Sağdaki paletten tip seç, hücreye tıkla. <b>Sağ tık</b>: sil. Sembol-kapı KENARA konur."},
+  {id:"lock",  label:"Kilit",     key:"L", hint:"Sürükleyerek kilitle. <b>Sağ tık</b>: kilidi aç. Kilitli hücreye değen kenar yeniden üretimde dokunulmaz."},
+  {id:"zone",  label:"Alt-bölge", key:"Z", hint:"Seçili alt-bölgeyi hücrelere sür. <b>Sağ tık</b>: temizle."},
+  {id:"kind",  label:"Hücre tipi",key:"K", hint:"Seçili hücre tipini sür. <b>Sağ tık</b>: normal'e döndür."}
+];
+let TOOL="edge";
+let markerType="kirik_checkpoint";
+let zonePick=null;
+let kindPick="void";
+
+let undoStack=[], redoStack=[], pendingSnap=null, dirty=false;
+function beginEdit(){ pendingSnap=JSON.stringify(doc); }
+function endEdit(changed){
+  if(!changed){ pendingSnap=null; return; }
+  if(pendingSnap){ undoStack.push(pendingSnap); if(undoStack.length>40) undoStack.shift(); redoStack.length=0; }
+  pendingSnap=null; dirty=true; refreshAll();
+}
+function undo(){ if(!undoStack.length) return toast("Geri alınacak adım yok");
+  redoStack.push(JSON.stringify(doc)); doc=JSON.parse(undoStack.pop()); dirty=true; reindex(); refreshAll(); }
+function redo(){ if(!redoStack.length) return toast("İleri alınacak adım yok");
+  undoStack.push(JSON.stringify(doc)); doc=JSON.parse(redoStack.pop()); dirty=true; reindex(); refreshAll(); }
+
+function refreshLight(){ reindex(); invalidate(); }
+function refreshAll(){
+  reindex(); computeMetrics(); validate();
+  renderMetrics(); renderIssues(); renderInspector(); renderZones(); renderPath(); syncForms(); updateHeader();
+  autosave(); invalidate();
+}
+
+/* ==========================================================================
+   9. FARE / KLAVYE
+   ========================================================================== */
+let drag=null;   // {mode, ...}
+function evPos(ev){ const r=cv.getBoundingClientRect(); return {x:ev.clientX-r.left, y:ev.clientY-r.top}; }
+function pickCell(p){ return cellAt(Math.floor(gX(p.x)), Math.floor(gY(p.y))); }
+function pickEdge(p, maxD){
+  const fx=gX(p.x), fy=gY(p.y), cx=Math.floor(fx), cy=Math.floor(fy);
+  const ox=fx-cx, oy=fy-cy;
+  const opts=[[ox,cx-1,cy],[1-ox,cx+1,cy],[oy,cx,cy-1],[1-oy,cx,cy+1]];
+  opts.sort((a,b)=>a[0]-b[0]);
+  const [d,nx,ny]=opts[0];
+  if(d>(maxD==null?0.5:maxD)) return null;
+  return edgeBetween(cx,cy,nx,ny);
+}
+function pickMarker(p){
+  const R=Math.max(7, view.z*0.34);
+  for(let i=doc.markers.length-1;i>=0;i--){
+    const m=doc.markers[i], def=MARKERS[m.type]; if(!def) continue;
+    let X,Y;
+    if(def.on==="cell"){ const c=cellById(m.cell); if(!c) continue; X=S(c.x)+view.z/2; Y=T(c.y)+view.z/2; }
+    else { const q=edgeMid(edgeById(m.edge)); if(!q) continue; X=q.x; Y=q.y; }
+    if(Math.hypot(p.x-X,p.y-Y)<=R) return m;
+  }
+  const c=pickCell(p);                       // yedek: tıklanan hücrenin marker'ı
+  if(c){ const ms=ix.markByCell.get(c.id); if(ms && ms.length) return ms[ms.length-1]; }
+  return null;
+}
+
+cv.addEventListener("contextmenu", e=>e.preventDefault());
+cv.addEventListener("mousedown", ev=>{
+  const p=evPos(ev);
+  if(ev.button===1 || (ev.button===0 && spaceDown)){
+    drag={mode:"pan", sx:ev.clientX, sy:ev.clientY, px:view.px, py:view.py}; ev.preventDefault(); return;
+  }
+  const right = ev.button===2;
+  if(ev.button!==0 && !right) return;
+  beginEdit();
+  drag={mode:TOOL, right, changed:false, seen:new Set()};
+  applyTool(p, ev, true);
+});
+window.addEventListener("mousemove", ev=>{
+  const p=evPos(ev);
+  if(drag && drag.mode==="pan"){
+    view.px=drag.px+(ev.clientX-drag.sx); view.py=drag.py+(ev.clientY-drag.sy); invalidate(); return;
+  }
+  // hover
+  const hc=pickCell(p), he=pickEdge(p);
+  if(hc!==hover.cell || he!==hover.edge){ hover.cell=hc; hover.edge=he; invalidate(); }
+  updateHud(p);
+  if(drag && drag.mode!=="select") applyTool(p, ev, false);
+});
+window.addEventListener("mouseup", ()=>{
+  if(drag && drag.mode!=="pan") endEdit(drag.changed);
+  drag=null;
+});
+cv.addEventListener("wheel", ev=>{
+  ev.preventDefault();
+  const p=evPos(ev), fx=gX(p.x), fy=gY(p.y);
+  const k = ev.deltaY<0 ? 1.12 : 1/1.12;
+  view.z=clamp(view.z*k, 4, 90);
+  view.px=p.x-fx*view.z; view.py=p.y-fy*view.z;
+  invalidate();
+},{passive:false});
+
+function applyTool(p, ev, isDown){
+  const d=drag; if(!d) return;
+  switch(d.mode){
+    case "select": {
+      if(!isDown) return;
+      const m=pickMarker(p);
+      if(m){ sel={t:"marker",id:m.id}; }
+      else { const e=pickEdge(p,0.22);
+        if(e) sel={t:"edge",id:e.id};
+        else { const c=pickCell(p); sel = c?{t:"cell",id:c.id}:{t:null,id:null}; } }
+      renderInspector(); invalidate(); return;
+    }
+    case "edge": {
+      const e = pickEdge(p, 0.5);
+      if(!e || d.seen.has(e.id)) return;
+      d.seen.add(e.id);
+      if(isDown && ev.shiftKey){
+        e.dir = e.dir==="both" ? "ab" : e.dir==="ab" ? "ba" : "both";
+      } else if(isDown){
+        d.paint = d.right ? "wall" : (e.state==="wall" ? "open" : e.state==="open" ? "door" : "wall");
+        e.state=d.paint; if(e.state==="wall") e.dir="both";
+      } else {
+        e.state = d.paint!=null ? d.paint : (d.right?"wall":"open");
+        if(e.state==="wall") e.dir="both";
+      }
+      d.changed=true; refreshLight(); return;
+    }
+    case "marker": {
+      if(!isDown) return;
+      const def=MARKERS[markerType];
+      if(d.right){
+        const m=pickMarker(p);
+        if(m){ doc.markers=doc.markers.filter(x=>x!==m); d.changed=true; if(sel.id===m.id) sel={t:null,id:null}; refreshLight(); }
+        return;
+      }
+      if(def.on==="edge"){
+        const e=pickEdge(p, 0.45); if(!e) return toast("Kenara daha yakın tıkla","err");
+        if(e.state!=="door") e.state="door";
+        doc.markers.push({id:newId("m"), type:markerType, cell:null, edge:e.id, label:"", props:defaultProps(markerType)});
+      }else{
+        const c=pickCell(p); if(!c) return;
+        if(!isPass(c)) return toast("Geçilemez hücreye marker konmaz","err");
+        if(def.unique) doc.markers=doc.markers.filter(m=>m.type!==markerType);
+        doc.markers.push({id:newId("m"), type:markerType, cell:c.id, edge:null, label:"", props:defaultProps(markerType)});
+      }
+      d.changed=true; sel={t:"marker",id:doc.markers[doc.markers.length-1].id};
+      refreshLight(); renderInspector(); return;
+    }
+    case "lock": {
+      const c=pickCell(p); if(!c||d.seen.has(c.id)) return;
+      d.seen.add(c.id); const v=!d.right;
+      if(c.locked!==v){ c.locked=v; d.changed=true; invalidate(); }
+      return;
+    }
+    case "zone": {
+      const c=pickCell(p); if(!c||d.seen.has(c.id)) return;
+      d.seen.add(c.id); const v=d.right?"":(zonePick||"");
+      if(c.zone!==v){ c.zone=v; d.changed=true; invalidate(); }
+      return;
+    }
+    case "kind": {
+      const c=pickCell(p); if(!c||d.seen.has(c.id)) return;
+      d.seen.add(c.id); const v=d.right?"normal":kindPick;
+      if(c.kind!==v){ c.kind=v; d.changed=true; refreshLight(); }
+      return;
+    }
+  }
+}
+function defaultProps(t){
+  if(t==="sembol_kapi")   return {symbolId:"sym_1"};
+  if(t==="sembol_kaynak") return {symbolId:"sym_1"};
+  if(t==="cizer_slot")    return {perde:(ZONE_PRESETS[doc.meta.zoneId]||{}).perde||"p1"};
+  if(t==="belge")         return {tur:"tutanak"};
+  if(t==="anomali_alani") return {radius:2};
+  return {};
+}
+function updateHud(p){
+  const fx=gX(p.x), fy=gY(p.y), cx=Math.floor(fx), cy=Math.floor(fy);
+  const c=cellAt(cx,cy);
+  const wx=((cx+0.5)*doc.meta.cellSize).toFixed(1), wz=((cy+0.5)*doc.meta.cellSize).toFixed(1);
+  el("hud").innerHTML = c
+    ? "hücre <b>"+cx+","+cy+"</b> · "+c.id+" · "+CELL_KINDS[c.kind].label+(c.locked?" · <span style='color:var(--err)'>kilitli</span>":"")
+      +" · dünya X"+wx+" Z"+wz+" m"
+    : "ızgara dışı";
+}
+
+let spaceDown=false;
+window.addEventListener("keydown", ev=>{
+  const t=ev.target.tagName;
+  if(t==="INPUT"||t==="TEXTAREA"||t==="SELECT") return;
+  if(ev.code==="Space"){ spaceDown=true; cv.style.cursor="grab"; ev.preventDefault(); return; }
+  const k=ev.key.toLowerCase();
+  if((ev.ctrlKey||ev.metaKey) && k==="s"){ ev.preventDefault(); saveFile(false); return; }
+  if((ev.ctrlKey||ev.metaKey) && k==="o"){ ev.preventDefault(); openFile(); return; }
+  if((ev.ctrlKey||ev.metaKey) && k==="z"){ ev.preventDefault(); ev.shiftKey?redo():undo(); return; }
+  if((ev.ctrlKey||ev.metaKey) && k==="y"){ ev.preventDefault(); redo(); return; }
+  if(ev.ctrlKey||ev.metaKey||ev.altKey) return;
+  const tool=TOOLS.find(x=>x.key.toLowerCase()===k);
+  if(tool){ setTool(tool.id); return; }
+  if(k==="g"){ doGenerate(); return; }
+  if(k==="f"){ fitView(); return; }
+  if(ev.key==="Delete"||ev.key==="Backspace"){ deleteSelection(); return; }
+});
+window.addEventListener("keyup", ev=>{ if(ev.code==="Space"){ spaceDown=false; cv.style.cursor="crosshair"; }});
+
+function deleteSelection(){
+  if(sel.t==="marker"){ beginEdit(); doc.markers=doc.markers.filter(m=>m.id!==sel.id); sel={t:null,id:null}; endEdit(true); }
+  else if(sel.t==="edge"){ const e=edgeById(sel.id); if(e&&e.state!=="wall"){ beginEdit(); e.state="wall"; e.dir="both"; endEdit(true); } }
+}
+
+/* ==========================================================================
+   10. PANEL ÇİZİMİ
+   ========================================================================== */
+function setTool(id){
+  TOOL=id;
+  [...el("toolBtns").children].forEach(b=>b.classList.toggle("on", b.dataset.t===id));
+  const t=TOOLS.find(x=>x.id===id);
+  el("toolHint").innerHTML=t?t.hint:"";
+  el("toolOpts").style.display = (id==="kind") ? "block" : "none";
+  if(id==="marker") el("pMarkers").classList.remove("collapsed");
+  if(id==="zone")   el("pZones").classList.remove("collapsed");
+  invalidate();
+}
+function buildTools(){
+  const box=el("toolBtns"); box.innerHTML="";
+  for(const t of TOOLS){
+    const b=document.createElement("button");
+    b.dataset.t=t.id; b.innerHTML=esc(t.label)+'<span class="k">'+t.key+'</span>';
+    b.onclick=()=>setTool(t.id); box.appendChild(b);
+  }
+  const opts=document.createElement("div");
+  opts.id="toolOpts"; opts.style.display="none"; opts.style.marginTop="6px";
+  opts.innerHTML='<div class="row"><label>Sürülecek</label><select id="fKindPaint" class="grow">'+
+    Object.entries(CELL_KINDS).map(([k,v])=>'<option value="'+k+'">'+esc(v.label)+'</option>').join("")+'</select></div>';
+  el("toolHint").after(opts);
+  opts.querySelector("select").value=kindPick;
+  opts.querySelector("select").onchange=e=>kindPick=e.target.value;
+}
+function buildMarkerPalette(){
+  const box=el("markerPalette"); box.innerHTML="";
+  for(const t of MARKER_ORDER){
+    const d=MARKERS[t];
+    const it=document.createElement("div");
+    it.className="it"+(t===markerType?" on":"");
+    it.innerHTML='<span class="dot" style="background:'+d.c+'"></span><span class="nm">'+esc(d.label)+'</span><span class="ct" id="mc_'+t+'"></span>';
+    it.onclick=()=>{ markerType=t; setTool("marker"); buildMarkerPalette(); el("markerHint").innerHTML=esc(d.hint); };
+    box.appendChild(it);
+  }
+  el("markerHint").innerHTML=esc(MARKERS[markerType].hint);
+  if(M) for(const t of MARKER_ORDER){ const s=el("mc_"+t); if(s) s.textContent=(M.counts[t]||0)||""; }
+}
+function renderZones(){
+  const box=el("zoneList"); box.innerHTML="";
+  const zs=doc.meta.zones||[];
+  if(!zs.length) box.innerHTML='<p class="hint">Alt-bölge yok.</p>';
+  for(const z of zs){
+    const n=doc.cells.filter(c=>c.zone===z.id).length;
+    const it=document.createElement("div");
+    it.className="it"+(z.id===zonePick?" on":"");
+    it.innerHTML='<input type="color" value="'+z.color+'"><span class="nm">'+esc(z.name)+'</span><span class="ct">'+n+'</span>';
+    it.querySelector("input").onclick=e=>e.stopPropagation();
+    it.querySelector("input").oninput=e=>{ z.color=e.target.value; dirty=true; invalidate(); };
+    it.onclick=()=>{ zonePick=z.id; setTool("zone"); renderZones(); };
+    it.ondblclick=()=>{ const n2=prompt("Alt-bölge adı:", z.name); if(n2){ z.name=n2; dirty=true; renderZones(); } };
+    box.appendChild(it);
+  }
+}
+function renderPath(){
+  const box=el("pathList"); box.innerHTML="";
+  const wp=doc.meta.criticalPath;
+  if(!Array.isArray(wp)||!wp.length){
+    const auto=(M&&M.cp&&M.cp.waypoints)?M.cp.waypoints.length:0;
+    box.innerHTML='<p class="hint">Otomatik türetiliyor ('+auto+' durak). Elle zincir kurmak için bir marker seçip <b>+ Seçili marker</b>.</p>';
+    return;
+  }
+  wp.forEach((id,i)=>{
+    const m=ix.markById.get(id), d=m?MARKERS[m.type]:null;
+    const it=document.createElement("div"); it.className="it";
+    it.innerHTML='<span class="dot" style="background:'+(d?d.c:"#f85149")+'"></span>'+
+      '<span class="nm">'+(i+1)+'. '+esc(m?(m.label||d.label):"(silinmiş "+id+")")+'</span>'+
+      '<button data-u="'+i+'" title="Yukarı" style="padding:0 5px">↑</button>'+
+      '<button data-x="'+i+'" title="Çıkar" style="padding:0 5px">×</button>';
+    it.querySelector("[data-u]").onclick=e=>{ e.stopPropagation(); if(i===0) return;
+      beginEdit(); const a=wp.slice(); const t=a[i-1]; a[i-1]=a[i]; a[i]=t; doc.meta.criticalPath=a; endEdit(true); };
+    it.querySelector("[data-x]").onclick=e=>{ e.stopPropagation();
+      beginEdit(); const a=wp.filter((_,k)=>k!==i); doc.meta.criticalPath=a.length?a:null; endEdit(true); };
+    it.onclick=()=>{ if(m) focusOn({t:"marker",id:m.id}); };
+    box.appendChild(it);
+  });
+}
+function pct(v){ return (v*100).toFixed(0)+"%"; }
+function cls(ok,warn){ return ok?"ok":(warn?"warn":"err"); }
+function renderMetrics(){
+  const m=M, meta=doc.meta;
+  const lrOK=Math.abs(m.loopRatio-LYNCH.loopTarget)<=LYNCH.loopTol;
+  const cp=m.cp, tgt=meta.criticalPathTargetMin;
+  const cpOK = cp.ok && tgt>0 && Math.abs(cp.totalMin-tgt)/tgt<=LYNCH.pathTolMin;
+  const cpLow = cp.ok && cp.totalMin < tgt;
+  let h="";
+  h+='<div class="bar"><i style="width:'+pct(m.loopRatio)+';background:#3fb950"></i><i style="flex:1;background:#d29922"></i></div>';
+  h+=row("Döngü oranı", pct(m.loopRatio), "hedef %70±5", cls(lrOK, true));
+  h+=row("Dal / ölü uç oranı", pct(m.branchRatio), "hedef %30", cls(lrOK,true));
+  h+=row("Ölü uç sayısı", m.deadEnds.length, "hücrelerin %"+(m.deadEnds.length/Math.max(1,m.scopeTotal)*100).toFixed(1), "");
+  h+=row("↳ ödemeyen", m.unpaid.length, "0 olmalı", m.unpaid.length?"warn":"ok");
+  h+=row("60 sn ihlali", m.badRuns.length, "özelliksiz koridor", m.badRuns.length?"warn":"ok");
+  h+=row("Erişilemeyen hücre", m.unreachable.length, "0 olmalı", m.unreachable.length?"err":"ok");
+  h+='<div class="sep"></div>';
+  if(cp.ok){
+    const mode=Array.isArray(meta.criticalPath)&&meta.criticalPath.length?"elle "+cp.waypoints.length+" durak":"otomatik (alt sınır)";
+    h+=row("Kritik yol", cp.cells.length-1+" hücre", (cp.cells.length-1)*meta.cellSize+" m","");
+    h+=row("↳ zincir", mode, "", "");
+    h+=row("↳ yürüme", cp.walkMin.toFixed(1)+" dk","","");
+    h+=row("↳ kaybolma payı ×"+meta.explorationFactor, cp.exploreMin.toFixed(1)+" dk","","");
+    h+=row("↳ duraklama", cp.dwellMin.toFixed(1)+" dk","yoldaki marker'lar","");
+    h+=row("<b>Tahmini süre</b>", cp.totalMin.toFixed(1)+" dk", "bütçe "+tgt+" dk", cpOK?"ok":(cpLow?"warn":"warn"));
+  } else {
+    h+='<p class="hint" style="color:var(--warn)">Kritik yol yok: '+esc(cp.err||"durak eksik")+'</p>';
+  }
+  h+='<div class="sep"></div>';
+  h+=row("Geçilebilir hücre", m.passTotal, meta.gridW+"×"+meta.gridH, "");
+  h+=row("Açık kenar / kapı", m.openEdges+" / "+m.doors, "", "");
+  h+=row("Tek yön kısayol", m.oneWays, "§7.1-4", "");
+  h+=row("Dünya ölçüsü", (meta.gridW*meta.cellSize)+"×"+(meta.gridH*meta.cellSize)+" m", "cellSize "+meta.cellSize+" m", "");
+  el("metrics").innerHTML=h;
+  buildMarkerPalette();
+  function row(lb,vl,tg,c){
+    return '<div class="metric"><span class="lb">'+lb+'</span><span class="vl '+c+'">'+vl+'</span>'+
+           (tg?'<span class="tg">'+esc(tg)+'</span>':'')+'</div>';
+  }
+}
+function renderIssues(){
+  const box=el("issues"); box.innerHTML="";
+  const order={err:0,warn:1,info:2};
+  const list=[...ISSUES].sort((a,b)=>order[a.level]-order[b.level]);
+  const ne=ISSUES.filter(i=>i.level==="err").length, nw=ISSUES.filter(i=>i.level==="warn").length;
+  el("issCount").innerHTML = (ne?'<span style="color:var(--err)">'+ne+' hata</span> ':'')+
+                             (nw?'<span style="color:var(--warn)">'+nw+' uyarı</span>':'')+
+                             (!ne&&!nw?'<span style="color:var(--ok)">temiz</span>':'');
+  if(!list.length){ box.innerHTML='<p class="empty">✓ Tüm canon denetimleri geçti.</p>'; return; }
+  for(const i of list){
+    const d=document.createElement("div");
+    d.className="iss "+i.level;
+    const cnt=i.items?'<span class="tag" id="ic_'+(i.items[0].id)+'"> 1/'+i.items.length+'</span>':'';
+    d.innerHTML='<span class="tag">'+esc(i.tag)+'</span><span class="bd">'+i.msg+cnt+'</span>';
+    if(i.items){
+      let k=0;
+      d.onclick=()=>{ focusOn(i.items[k]); k=(k+1)%i.items.length;
+        const s2=el("ic_"+i.items[0].id); if(s2) s2.textContent=" "+(k||i.items.length)+"/"+i.items.length; };
+    }
+    else if(i.focus) d.onclick=()=>focusOn(i.focus);
+    else d.style.cursor="default";
+    box.appendChild(d);
+  }
+}
+function renderInspector(){
+  const box=el("inspector");
+  if(!sel.t){ box.innerHTML='<p class="hint">Seç aracıyla (<span class="kbd">V</span>) bir hücre, kenar veya marker\'a tıkla.</p>'; return; }
+  let h="";
+  if(sel.t==="cell"){
+    const c=cellById(sel.id);
+    if(!c){ sel={t:null,id:null}; return renderInspector(); }
+    const deg=M&&M.deg?(M.deg.get(c.id)||0):0;
+    h+='<div class="metric"><span class="lb">Hücre</span><span class="vl">'+c.x+","+c.y+'</span><span class="tg">'+c.id+'</span></div>';
+    h+='<div class="metric"><span class="lb">Derece</span><span class="vl">'+deg+'</span><span class="tg">'+(deg===1?"ölü uç":deg>2?"kavşak":"koridor")+'</span></div>';
+    h+='<div class="row"><label>Tip</label><select class="grow" data-f="kind">'+
+       Object.entries(CELL_KINDS).map(([k,v])=>'<option value="'+k+'"'+(c.kind===k?" selected":"")+'>'+esc(v.label)+'</option>').join("")+'</select></div>';
+    h+='<div class="row"><label>Alt-bölge</label><select class="grow" data-f="zone"><option value="">—</option>'+
+       (doc.meta.zones||[]).map(z=>'<option value="'+z.id+'"'+(c.zone===z.id?" selected":"")+'>'+esc(z.name)+'</option>').join("")+'</select></div>';
+    h+='<label class="chk"><input type="checkbox" data-f="locked"'+(c.locked?" checked":"")+'> Kilitli (yeniden üretimden korumalı)</label>';
+    h+='<div class="row" style="margin-top:6px"><label>Ödeme</label></div>';
+    h+='<input type="text" data-f="payoff" value="'+esc(c.payoff)+'" placeholder="manzara / grafiti — ölü uç borcu">';
+    h+='<p class="hint">Ölü uç ödül marker\'ıyla ödenmiyorsa bu alan doldurulmalı (GDD §7.1-3).</p>';
+    h+='<div class="row" style="margin-top:6px"><label>Not</label></div><textarea data-f="note">'+esc(c.note)+'</textarea>';
+    const ms=ix.markByCell.get(c.id)||[];
+    if(ms.length){ h+='<div class="sep"></div><div class="list">'+ms.map(m=>
+      '<div class="it" data-m="'+m.id+'"><span class="dot" style="background:'+MARKERS[m.type].c+'"></span><span class="nm">'+esc(MARKERS[m.type].label)+'</span></div>').join("")+'</div>'; }
+    box.innerHTML=h; bindInspector(c, "cell");
+  }
+  else if(sel.t==="edge"){
+    const e=edgeById(sel.id);
+    if(!e){ sel={t:null,id:null}; return renderInspector(); }
+    const [A,B]=edgeCells(e);
+    h+='<div class="metric"><span class="lb">Kenar</span><span class="vl">'+(A?A.x+","+A.y:"?")+" ↔ "+(B?B.x+","+B.y:"?")+'</span><span class="tg">'+e.id+'</span></div>';
+    h+='<div class="row"><label>Durum</label><select class="grow" data-f="state">'+
+       ["wall","open","door"].map(s=>'<option value="'+s+'"'+(e.state===s?" selected":"")+'>'+({wall:"Duvar",open:"Açık",door:"Kapı"})[s]+'</option>').join("")+'</select></div>';
+    h+='<div class="row"><label>Yön</label><select class="grow" data-f="dir">'+
+       [["both","Çift yönlü"],["ab","Tek yön a→b"],["ba","Tek yön b→a"]].map(([v,l])=>'<option value="'+v+'"'+(e.dir===v?" selected":"")+'>'+l+'</option>').join("")+'</select></div>';
+    if(edgeGeneratable(e)) h+='<p class="hint">Bu kenar yeniden üretimde <b>değiştirilebilir</b>.</p>';
+    else h+='<p class="hint" style="color:var(--warn)">Kilit-sınır kuralı: bu kenar yeniden üretimde <b>dokunulmaz</b>.</p>';
+    h+='<div class="row" style="margin-top:6px"><label>Not</label></div><textarea data-f="note">'+esc(e.note)+'</textarea>';
+    box.innerHTML=h; bindInspector(e, "edge");
+  }
+  else if(sel.t==="marker"){
+    const m=ix.markById.get(sel.id);
+    if(!m){ sel={t:null,id:null}; return renderInspector(); }
+    const d=MARKERS[m.type]||{label:m.type,c:"#888"};
+    h+='<div class="metric"><span class="lb"><span class="dot" style="background:'+d.c+';display:inline-block;vertical-align:-1px"></span> '+esc(d.label)+'</span><span class="tg">'+m.id+'</span></div>';
+    h+='<div class="row"><label>Etiket</label><input type="text" data-f="label" class="grow" value="'+esc(m.label)+'"></div>';
+    const P=m.props||{};
+    if(m.type==="sembol_kapi"||m.type==="sembol_kaynak")
+      h+='<div class="row"><label>symbolId</label><input type="text" data-p="symbolId" class="grow" value="'+esc(P.symbolId||"")+'"></div>';
+    if(m.type==="cizer_slot")
+      h+='<div class="row"><label>perde</label><select data-p="perde" class="grow">'+["p1","p2","p3"].map(v=>'<option'+(P.perde===v?" selected":"")+'>'+v+'</option>').join("")+'</select></div>';
+    if(m.type==="belge")
+      h+='<div class="row"><label>tür</label><select data-p="tur" class="grow">'+["tutanak","kronoloji","grafiti"].map(v=>'<option'+(P.tur===v?" selected":"")+'>'+v+'</option>').join("")+'</select></div>';
+    if(m.type==="anomali_alani")
+      h+='<div class="row"><label>yarıçap</label><input type="number" data-p="radius" class="grow" step="1" min="0" value="'+(P.radius!=null?P.radius:2)+'"></div>';
+    h+='<div class="row"><label>Duraklama</label><span class="grow">'+((doc.meta.dwell||{})[m.type]||0)+' dk</span></div>';
+    h+='<p class="hint">'+esc(d.hint||"")+'</p>';
+    h+='<div class="btns" style="margin-top:6px"><button class="danger" id="bDelMarker">Marker\'ı sil</button></div>';
+    box.innerHTML=h; bindInspector(m, "marker");
+    el("bDelMarker").onclick=()=>{ beginEdit(); doc.markers=doc.markers.filter(x=>x.id!==m.id); sel={t:null,id:null}; endEdit(true); };
+  }
+}
+function bindInspector(obj, kind){
+  const box=el("inspector");
+  box.querySelectorAll("[data-f]").forEach(inp=>{
+    const f=inp.dataset.f;
+    const commit=()=>{
+      beginEdit();
+      const v = inp.type==="checkbox" ? inp.checked : inp.value;
+      if(obj[f]===v){ pendingSnap=null; return; }
+      obj[f]=v;
+      if(kind==="edge" && f==="state" && v==="wall") obj.dir="both";
+      endEdit(true);
+    };
+    inp.addEventListener(inp.tagName==="SELECT"||inp.type==="checkbox"?"change":"change", commit);
+  });
+  box.querySelectorAll("[data-p]").forEach(inp=>{
+    inp.addEventListener("change", ()=>{
+      beginEdit();
+      obj.props=obj.props||{};
+      obj.props[inp.dataset.p] = inp.type==="number" ? +inp.value : inp.value;
+      endEdit(true);
+    });
+  });
+  box.querySelectorAll("[data-m]").forEach(it=>{
+    it.onclick=()=>{ sel={t:"marker",id:it.dataset.m}; renderInspector(); invalidate(); };
+  });
+}
+
+/* ==========================================================================
+   11. FORMLAR / EYLEMLER
+   ========================================================================== */
+function syncForms(){
+  const m=doc.meta;
+  el("fSeed").value=m.seed; el("fBraid").value=m.braid; el("lBraid").textContent=(+m.braid).toFixed(2);
+  el("fZoneName").value=m.zoneName; el("fGW").value=m.gridW; el("fGH").value=m.gridH;
+  el("fCellSize").value=m.cellSize; el("fWalk").value=m.walkSpeed;
+  el("fTarget").value=m.criticalPathTargetMin; el("fExplore").value=m.explorationFactor;
+  el("fFogMin").value=m.fogMin; el("fFogMax").value=m.fogMax; el("fNotes").value=m.notes||"";
+  const zs=el("fZoneId"); if(zs.value!==m.zoneId) zs.value=m.zoneId;
+  const lockN=doc.cells.filter(c=>c.locked).length;
+  const li=el("lockInfo");
+  if(lockN){ li.style.display="block"; li.innerHTML="<b>"+lockN+" hücre kilitli.</b> Yeniden üretim yalnız kilitsiz alanı ve <i>tamamen</i> kilitsiz kenarları değiştirir."; }
+  else li.style.display="none";
+}
+function bindMeta(id,key,parse){
+  el(id).addEventListener("change",()=>{
+    const v=parse?parse(el(id).value):el(id).value;
+    if(doc.meta[key]===v) return;
+    beginEdit(); doc.meta[key]=v; endEdit(true);
+  });
+}
+function doGenerate(){
+  const seed=(+el("fSeed").value)|0, braid=+el("fBraid").value;
+  beginEdit();
+  doc.meta.seed=seed; doc.meta.braid=braid;
+  if(!el("fKeepMarkers").checked) doc.markers=[];
+  const r=generate(seed,braid,{});
+  endEdit(true);
+  toast("Üretildi — "+r.carved+" geçit açıldı, "+r.braided+"/"+r.deadEnds+" ölü uç örüldü.","ok");
+}
+function doAutoBraid(){
+  const seed=(+el("fSeed").value)|0;
+  beginEdit();
+  doc.meta.seed=seed;
+  doc.meta.braid=+autoBraid(seed, LYNCH.loopTarget).toFixed(3);
+  endEdit(true);
+  toast("Örgü "+doc.meta.braid.toFixed(2)+" → ölçülen döngü %"+(M.loopRatio*100).toFixed(0),"ok");
+}
+function resizeGrid(w,h){
+  const byXY=new Map(); for(const c of doc.cells) byXY.set(c.x+","+c.y,c);
+  const eByKey=new Map();
+  for(const e of doc.edges){
+    const A=ix.cellById.get(e.a), B=ix.cellById.get(e.b); if(!A||!B) continue;
+    eByKey.set((B.x>A.x)?A.x+","+A.y+",h":A.x+","+A.y+",v", e);
+  }
+  const cells=[];
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+    let c=byXY.get(x+","+y);
+    if(!c) c={id:newId("c"),x,y,kind:"normal",zone:"",locked:false,payoff:"",note:""};
+    cells.push(c);
+  }
+  const at=(x,y)=>(x<0||y<0||x>=w||y>=h)?null:cells[y*w+x];
+  const edges=[];
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+    if(x+1<w){ let e=eByKey.get(x+","+y+",h")||{id:newId("e"),state:"wall",dir:"both",note:""};
+      e.a=at(x,y).id; e.b=at(x+1,y).id; edges.push(e); }
+    if(y+1<h){ let e=eByKey.get(x+","+y+",v")||{id:newId("e"),state:"wall",dir:"both",note:""};
+      e.a=at(x,y).id; e.b=at(x,y+1).id; edges.push(e); }
+  }
+  doc.cells=cells; doc.edges=edges; doc.meta.gridW=w; doc.meta.gridH=h;
+  const cids=new Set(cells.map(c=>c.id)), eids=new Set(edges.map(e=>e.id));
+  doc.markers=doc.markers.filter(m=> m.cell ? cids.has(m.cell) : eids.has(m.edge));
+  reindex();
+}
+
+/* ==========================================================================
+   12. DOSYA G/Ç — File System Access API + download fallback
+   ========================================================================== */
+let fileHandle=null, fileName=null;
+const AUTOKEY="project_maze.maze_tool.autosave";
+
+function serialize(d){
+  d.meta.modifiedAt=nowISO();
+  const J=o=>JSON.stringify(o);
+  const arr=(items,norm)=> items.length ? "\n"+items.map(o=>"    "+J(norm(o))).join(",\n")+"\n  " : "";
+  return "{\n"+
+    '  "format": '+J(d.format)+",\n"+
+    '  "version": '+d.version+",\n"+
+    '  "meta": '+JSON.stringify(normMeta(d.meta),null,2).split("\n").join("\n  ")+",\n"+
+    '  "nextId": '+d.nextId+",\n"+
+    '  "cells": ['+arr(d.cells,normCell)+"],\n"+
+    '  "edges": ['+arr(d.edges,normEdge)+"],\n"+
+    '  "markers": ['+arr(d.markers,normMarker)+"]\n"+
+    "}\n";
+}
+function adoptDoc(obj){
+  if(!obj||typeof obj!=="object") throw new Error("Geçersiz JSON.");
+  if(obj.format!==FORMAT) throw new Error('Beklenen format "'+FORMAT+'", bulunan: '+obj.format);
+  const zid=(obj.meta&&obj.meta.zoneId)||"enkaz";
+  const P=ZONE_PRESETS[zid]||ZONE_PRESETS.enkaz;
+  const meta=Object.assign({
+    zoneId:zid, zoneName:P.name, gridW:28, gridH:28, cellSize:6.0, walkSpeed:1.4,
+    pivotConvention:"cell_center_floor", seed:1, braid:LYNCH.loopTarget,
+    criticalPathTargetMin:P.target, explorationFactor:1.15, fogMin:40, fogMax:80,
+    dwell:null, criticalPath:null, zones:[], notes:"", createdAt:nowISO(), modifiedAt:nowISO()
+  }, obj.meta||{});
+  meta.dwell=Object.assign(defaultDwell(), meta.dwell||{});
+  doc={
+    format:FORMAT, version:SCHEMA_VERSION, meta:normMeta(meta),
+    nextId:obj.nextId||1,
+    cells:(obj.cells||[]).map(c=>normCell(Object.assign({kind:"normal",zone:"",locked:false,payoff:"",note:""},c))),
+    edges:(obj.edges||[]).map(e=>normEdge(Object.assign({state:"wall",dir:"both",note:""},e))),
+    markers:(obj.markers||[]).map(m=>normMarker(Object.assign({cell:null,edge:null,label:"",props:{}},m)))
+  };
+  let mx=0;
+  for(const a of [doc.cells,doc.edges,doc.markers]) for(const o of a){
+    const n=parseInt(String(o.id||"").slice(1),10); if(Number.isFinite(n)&&n>mx) mx=n;
+  }
+  if(!(doc.nextId>mx)) doc.nextId=mx+1;
+  reindex();
+  resizeGrid(doc.meta.gridW, doc.meta.gridH);   // kafes bütünlüğünü garanti et
+  undoStack=[]; redoStack=[]; sel={t:null,id:null};
+}
+function defaultName(){ return (doc.meta.zoneId||"bolge")+".maze.json"; }
+function downloadFallback(name, text){
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([text],{type:"application/json"}));
+  a.download=name; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+}
+async function saveFile(saveAs){
+  const text=serialize(doc);
+  if(window.showSaveFilePicker){
+    try{
+      if(saveAs || !fileHandle){
+        fileHandle=await window.showSaveFilePicker({
+          suggestedName: fileName||defaultName(),
+          types:[{description:"Maze JSON",accept:{"application/json":[".json"]}}]
+        });
+      }
+      const w=await fileHandle.createWritable(); await w.write(text); await w.close();
+      fileName=fileHandle.name; dirty=false; updateHeader();
+      toast("Kaydedildi: "+fileName,"ok"); return;
+    }catch(err){
+      if(err && err.name==="AbortError") return;
+      fileHandle=null;
+      toast("Doğrudan kayıt yok ("+err.name+") — indirmeye düşüldü","err");
+    }
+  }
+  fileName=fileName||defaultName();
+  downloadFallback(fileName, text);
+  dirty=false; updateHeader();
+}
+async function openFile(){
+  if(window.showOpenFilePicker){
+    try{
+      const [h]=await window.showOpenFilePicker({types:[{description:"Maze JSON",accept:{"application/json":[".json"]}}]});
+      const f=await h.getFile(); loadText(await f.text(), f.name); fileHandle=h; return;
+    }catch(err){ if(err&&err.name==="AbortError") return; }
+  }
+  const inp=document.createElement("input"); inp.type="file"; inp.accept=".json,application/json";
+  inp.onchange=async()=>{ const f=inp.files[0]; if(f) loadText(await f.text(), f.name); };
+  inp.click();
+}
+function loadText(text, name){
+  try{
+    adoptDoc(JSON.parse(text));
+    fileName=name||defaultName(); fileHandle=null; dirty=false;
+    refreshAll(); fitView();
+    toast("Yüklendi: "+fileName+" — "+doc.cells.length+" hücre, "+doc.markers.length+" marker","ok");
+  }catch(err){ toast("Açılamadı: "+err.message,"err"); }
+}
+function autosave(){
+  try{ localStorage.setItem(AUTOKEY, JSON.stringify({name:fileName, t:Date.now(), d:doc})); }catch(e){}
+}
+
+/* ==========================================================================
+   13. YENİ BELGE DİYALOĞU
+   ========================================================================== */
+function openNewDialog(){
+  const ov=document.createElement("div");
+  ov.style.cssText="position:fixed;inset:0;background:#0d1117d8;display:flex;align-items:center;justify-content:center;z-index:50";
+  ov.innerHTML='<div style="background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:16px 18px;width:380px">'+
+    '<h3 style="margin:0 0 4px;font-size:13px">Yeni bölge dosyası</h3>'+
+    '<p class="hint" style="margin:0 0 12px">Ön ayarlar GDD §7.3 bölge tablosundan gelir; ızgara boyu <b>başlangıç noktasıdır</b> — kritik yol süresi metrik panelinden okunup ayarlanır. Merkez araca girmez.</p>'+
+    Object.entries(ZONE_PRESETS).map(([k,p])=>
+      '<button data-z="'+k+'" style="width:100%;text-align:left;margin-bottom:6px;padding:8px 10px">'+
+      '<b>'+esc(p.name)+'</b> <span style="color:var(--fg3)">— '+p.w+'×'+p.h+' hücre, kritik yol '+p.target+' dk</span></button>').join("")+
+    '<div class="btns" style="margin-top:10px"><button id="nvCancel">Vazgeç</button></div></div>';
+  document.body.appendChild(ov);
+  ov.querySelector("#nvCancel").onclick=()=>ov.remove();
+  ov.onclick=e=>{ if(e.target===ov) ov.remove(); };
+  ov.querySelectorAll("[data-z]").forEach(b=>b.onclick=()=>{
+    if(dirty && !confirm("Kaydedilmemiş değişiklikler var. Yine de yeni dosya açılsın mı?")) return;
+    ov.remove();
+    createDoc(b.dataset.z);
+    zonePick=(doc.meta.zones[0]||{}).id||null;
+    fileHandle=null; fileName=null; dirty=false; undoStack=[]; redoStack=[];
+    doc.meta.braid=+autoBraid(doc.meta.seed, LYNCH.loopTarget).toFixed(3);
+    refreshAll(); fitView();
+    toast("Yeni bölge: "+doc.meta.zoneName+" — 'Oyuncu başlangıcı' marker'ını yerleştirerek başla","ok");
+  });
+}
+
+/* ==========================================================================
+   14. KÜÇÜK YARDIMCILAR / BAĞLAMA / AÇILIŞ
+   ========================================================================== */
+let toastT=null;
+function toast(msg, kind){
+  const t=el("toast"); t.textContent=msg; t.className="on "+(kind||"");
+  clearTimeout(toastT); toastT=setTimeout(()=>t.className="", 2600);
+}
+function updateHeader(){
+  el("hFile").textContent = fileName || "(kaydedilmemiş)";
+  el("hDirty").textContent = dirty ? "●" : "";
+  el("hZone").textContent = doc ? doc.meta.zoneName+" · "+doc.meta.gridW+"×"+doc.meta.gridH : "";
+  el("bUndo").disabled=!undoStack.length; el("bRedo").disabled=!redoStack.length;
+}
+function buildViewToggles(){
+  const defs=[["zone","Alt-bölge renkleri"],["markers","Marker'lar"],["path","Kritik yol"],["warn","Uyarı katmanı"],
+              ["locked","Kilit deseni"],["oneway","Tek yön okları"],["kind","Hücre tipi izleri"],
+              ["coords","Koordinat"],["ids","ID"],["opendots","Açık kenar noktaları"]];
+  el("viewToggles").innerHTML=defs.map(([k,l])=>
+    '<label class="chk"><input type="checkbox" data-v="'+k+'"'+(VIEW[k]?" checked":"")+'> '+esc(l)+'</label>').join("");
+  el("viewToggles").querySelectorAll("[data-v]").forEach(i=>
+    i.onchange=()=>{ VIEW[i.dataset.v]=i.checked; invalidate(); });
+}
+function boot(){
+  // panel katlama
+  document.querySelectorAll(".panel>h2").forEach(h=>h.onclick=()=>h.parentElement.classList.toggle("collapsed"));
+  el("fZoneId").innerHTML=Object.entries(ZONE_PRESETS).map(([k,p])=>'<option value="'+k+'">'+esc(p.name)+'</option>').join("");
+
+  buildTools(); buildViewToggles();
+  setTool("edge");
+
+  // meta bağlama
+  bindMeta("fZoneName","zoneName");
+  bindMeta("fCellSize","cellSize",v=>+v);
+  bindMeta("fWalk","walkSpeed",v=>Math.max(0.2,+v));
+  bindMeta("fTarget","criticalPathTargetMin",v=>+v);
+  bindMeta("fExplore","explorationFactor",v=>Math.max(1,+v));
+  bindMeta("fFogMin","fogMin",v=>+v);
+  bindMeta("fFogMax","fogMax",v=>+v);
+  bindMeta("fNotes","notes");
+  bindMeta("fSeed","seed",v=>(+v)|0);
+  el("fZoneId").onchange=()=>{
+    const k=el("fZoneId").value, P=ZONE_PRESETS[k];
+    beginEdit();
+    doc.meta.zoneId=k;
+    if(confirm("Bölge ön ayarını da uygula? (ad, hedef süre, alt-bölge paleti)")){
+      doc.meta.zoneName=P.name; doc.meta.criticalPathTargetMin=P.target;
+      doc.meta.zones=JSON.parse(JSON.stringify(P.zones));
+    }
+    endEdit(true);
+  };
+  el("fBraid").oninput=()=>el("lBraid").textContent=(+el("fBraid").value).toFixed(2);
+  el("fBraid").onchange=()=>{ beginEdit(); doc.meta.braid=+el("fBraid").value; endEdit(true); };
+  el("bSeedRnd").onclick=()=>{ el("fSeed").value=(Math.random()*1e9)|0; el("fSeed").dispatchEvent(new Event("change")); };
+
+  el("bGen").onclick=doGenerate;
+  el("bAutoBraid").onclick=doAutoBraid;
+  el("bUndo").onclick=undo; el("bRedo").onclick=redo;
+  el("bFit").onclick=fitView;
+  el("bZoomIn").onclick=()=>{view.z=clamp(view.z*1.25,4,90);invalidate();};
+  el("bZoomOut").onclick=()=>{view.z=clamp(view.z/1.25,4,90);invalidate();};
+  el("bResize").onclick=()=>{
+    const w=clamp((+el("fGW").value)|0,3,200), h=clamp((+el("fGH").value)|0,3,200);
+    if(w===doc.meta.gridW&&h===doc.meta.gridH) return;
+    const lost=doc.cells.filter(c=>c.x>=w||c.y>=h).length;
+    if(lost && !confirm(lost+" hücre ızgara dışında kalacak ve marker'larıyla birlikte silinecek. Devam?")) { syncForms(); return; }
+    beginEdit(); resizeGrid(w,h); endEdit(true); fitView();
+  };
+  el("bZoneAdd").onclick=()=>{
+    const n=prompt("Yeni alt-bölge adı:"); if(!n) return;
+    beginEdit();
+    const id=n.toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"")||("z"+Date.now());
+    doc.meta.zones.push({id,name:n,color:"#3a4450"}); zonePick=id;
+    endEdit(true);
+  };
+  el("bZoneDel").onclick=()=>{
+    if(!zonePick) return toast("Önce bir alt-bölge seç","err");
+    beginEdit();
+    doc.meta.zones=doc.meta.zones.filter(z=>z.id!==zonePick);
+    for(const c of doc.cells) if(c.zone===zonePick) c.zone="";
+    zonePick=null; endEdit(true);
+  };
+  el("bPathAdd").onclick=()=>{
+    if(sel.t!=="marker") return toast("Önce Seç aracıyla (V) bir marker seç","err");
+    beginEdit();
+    const wp=Array.isArray(doc.meta.criticalPath)?doc.meta.criticalPath.slice():[];
+    if(wp[wp.length-1]!==sel.id) wp.push(sel.id);
+    doc.meta.criticalPath=wp; endEdit(true);
+  };
+  el("bPathAuto").onclick=()=>{ beginEdit(); doc.meta.criticalPath=null; endEdit(true); };
+  el("bNew").onclick=openNewDialog;
+  el("bOpen").onclick=openFile;
+  el("bSave").onclick=()=>saveFile(false);
+  el("bSaveAs").onclick=()=>saveFile(true);
+
+  // sürükle-bırak
+  const main=document.querySelector("main"), dz=el("drop");
+  ["dragenter","dragover"].forEach(t=>main.addEventListener(t,e=>{e.preventDefault();dz.classList.add("on");}));
+  ["dragleave","drop"].forEach(t=>main.addEventListener(t,e=>{e.preventDefault();if(t==="dragleave"&&e.relatedTarget&&main.contains(e.relatedTarget))return;dz.classList.remove("on");}));
+  main.addEventListener("drop", async e=>{
+    const f=e.dataTransfer.files[0]; if(f) loadText(await f.text(), f.name);
+  });
+
+  window.addEventListener("resize", resizeCanvas);
+  window.addEventListener("beforeunload", e=>{ if(dirty){ e.preventDefault(); e.returnValue=""; }});
+
+  // açılış belgesi: otomatik kayıt varsa geri yükle
+  let restored=false;
+  try{
+    const raw=localStorage.getItem(AUTOKEY);
+    if(raw){ const o=JSON.parse(raw); adoptDoc(o.d); fileName=o.name||null; restored=true; }
+  }catch(e){ restored=false; }
+  if(!restored){
+    createDoc("enkaz");
+    doc.meta.braid=+autoBraid(doc.meta.seed, LYNCH.loopTarget).toFixed(3);
+  }
+  zonePick=(doc.meta.zones[0]||{}).id||null;
+  resizeCanvas(); refreshAll(); fitView();
+  if(restored) toast("Otomatik kayıttan geri yüklendi — sıfırlamak için Yeni…");
+}
+boot();
+</script>
+</body>
+</html>
