@@ -66,6 +66,36 @@ const ok = (n,c,extra='') => { console.log((c?'  PASS ':'  FAIL ')+n+(extra?'  [
   });
   ok('tüm geçilebilir hücreler tek bileşende', conn.total===conn.reached, conn.reached+'/'+conn.total);
 
+  console.log('\n== 3b. Köprü tespiti (döngü oranı metriğinin temeli) ==');
+  const br = await pg.evaluate(() => {
+    // Kaba kuvvet referansı: bir kenar köprüdür <=> kaldırılınca uçları ayrılır.
+    const brute = (adj, nodes) => {
+      const out = new Set(), edges = new Set();
+      for (const n of nodes) for (const {e} of adj.get(n.id)) edges.add(e);
+      for (const e of edges) {
+        const seen = new Set([e.a]), q = [e.a];
+        while (q.length) { const u = q.pop();
+          for (const {to, e:ee} of adj.get(u)||[]) { if (ee.id===e.id || seen.has(to)) continue; seen.add(to); q.push(to); } }
+        if (!seen.has(e.b)) out.add(e.id);
+      }
+      return out;
+    };
+    const res = [];
+    for (const [w,h,seed,braid] of [[12,12,1,0],[12,12,2,0.3],[14,10,3,0.7],[10,10,4,1.0],[16,16,5,0.5]]) {
+      createDoc('enkaz'); resizeGrid(w,h); generate(seed,braid,{}); reindex();
+      if (seed===5) { for (const c of doc.cells) if (c.x===8) c.kind='void'; reindex(); }  // ayrık bileşen
+      const {nodes, adj} = buildGraph();
+      const fast = findBridges(adj, nodes), slow = brute(adj, nodes);
+      res.push({seed, braid, fast:fast.size, slow:slow.size,
+                same: fast.size===slow.size && [...fast].every(id=>slow.has(id))});
+    }
+    return res;
+  });
+  console.table(br);
+  ok('findBridges kaba kuvvetle birebir aynı (ayrık bileşen dahil)', br.every(x=>x.same));
+  ok('mükemmel labirentte her kenar köprü', br[0].fast === br[0].slow && br[0].fast > 0);
+  ok('tam örülü labirentte köprü yok', br[3].fast === 0);
+
   console.log('\n== 4. Hedefe ayarla (autoBraid) ==');
   // Doğru değişmez: ulaşılabilir en iyi orana yakınsamak. Döngü oranı `want` içinde
   // basamaklıdır; bazı tohumlarda %70'e ulaşılamaz, ama araç en yakını bulmalıdır.
