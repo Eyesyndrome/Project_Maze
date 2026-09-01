@@ -9,7 +9,7 @@
 | **Çalışma adı** | Project Maze |
 | **Final isim adayları** | 1) **WAYMARK** — ana mekaniği (yol işaretleme) tek kelimede satar, telaffuzu evrensel. 2) **ASTERION** — Watcher'ın gerçek adı; mitolojik ağırlık, "adlandırma = güç" temasıyla örtüşür. 3) **THE UNDRAWN** — Çizer'i ve "henüz çizilmemiş işaret" korkusunu ima eder. Final isim + capsule art kararı demo takviminden önce verilir (bkz. A15). |
 | **Tek cümlelik pitch (USP)** | "Labirentte yolunu sprey boyayla işaretliyorsun — ama içerideki bir şey senin işaretlerini taklit ediyor." |
-| **Versiyon** | 1.0 — Final Taslak |
+| **Versiyon** | 1.1 — Final (bağımsız kalite kontrol sonrası) |
 | **Tarih** | Eylül 2026 |
 | **Hazırlayan notu** | Bu doküman; pazar araştırması, lore araştırması, sistem/level tasarım analizi, yönetici karar seti ve denetim sonrası final karar setinin (A1–A16) sentezidir. Karar dili kesindir; alternatifler ve gerekçeler Ek A'daki Karar Günlüğü'ne taşınmıştır. Dahili dokümandır: spoiler içerir. |
 
@@ -140,7 +140,7 @@ Hikâye **bireysel vicdan** ekseninde anlatılır; kurumsal/sistemik suç dramas
 | Son | Etiket | Koşul (somut fiiller) | Sahne |
 |---|---|---|---|
 | **Tüy (itiraf)** | [MVP] | Merkezde oyuncu kendi vaka damgasının boş hüküm hanesini spreyle doldurur: "tanık: ben" | Watcher ilk kez tam görünür — insandır. Çıkış, Chartres tek-yol labirentidir (kaybolunamaz). Araba enkazının yanında uyanış; telefon kulübesi çalıyor |
-| **Ağır Kalp (inkâr)** | [MVP] | Kırık kanıt etkileşimlerini yapmadan geçmek + Çizer'in ok zincirini takip etmek + finalde hüküm hanesini boş bırakıp çıkış kapısını boyamak (A7 — "kanıt silme" fiili yoktur, silme zaten yalnız kendi boyada çalışır) | Kapıdan çıkar ama sis açılmaz. Son sahnede eli kendiliğinden ok çizmeye başlar: **yeni Bilinmeyen Çizer o olmuştur** (döngü; ek ara sahne yok) |
+| **Ağır Kalp (inkâr)** | [MVP] | Kırık kanıt etkileşimlerini yapmadan geçmek + Çizer'in ok zincirini takip etmek + finalde hüküm hanesini boş bırakıp çıkış kapısını boyamak (A7 — "kanıt silme" fiili yoktur, silme zaten yalnız kendi boyada çalışır). Not: Kırık'taki **kayıt etkileşimi** (arabaya oturma/ahize) sicile işlemez ve kanıt etkileşiminden ayrıdır — inkâr yolundaki oyuncu da kayıt yapabilir | Kapıdan çıkar ama sis açılmaz. Son sahnede eli kendiliğinden ok çizmeye başlar: **yeni Bilinmeyen Çizer o olmuştur** (döngü; ek ara sahne yok) |
 | **İp (vekâlet)** | [Hedef — gizli] | Oyuncu Çizer'in eski dürüst işaretlerini restore edip ONUN duruşmasını tamamlar | Kendisi çıkamaz; duvarda yeni bir el yazısı belirir: sonraki yutulana yol gösteren, titremeyen ok. Ariadne olmayı seçmek. **Sıkışmada ilk kesilecek kalemdir (A7/A16)** |
 
 Tüm sonlar tek mekanik (sprey) + tek sahne varyasyonudur; sesli diyalog, uzun ara sahne, ek sistem gerektirmez.
@@ -193,12 +193,12 @@ Bölge kapıları, labirentin başka yerinde bulunan bir sembolün kapıya **spr
 **Sürtünme tavanı kuralları (A6):**
 - Kritik yolda **bölge başına en fazla 1 sembol-kapı, oyun boyunca toplam 4**.
 - Sembol aynı bölgededir; kapıya yürüme mesafesi **≤ 2–3 dakika**.
-- Yanlış çizim **cezasızdır, deneme sınırsızdır**; N başarısız denemeden sonra diegetik ipucu belirir (yakındaki is lekesi hizası sembole işaret eder).
+- Yanlış çizim **cezasızdır, deneme sınırsızdır**; N başarısız denemeden sonra diegetik ipucu belirir (yakındaki scripted is lekesi hizası sembole işaret eder — §4.6 etiket ayrımı). **N: playtest parametresi, başlangıç değeri 3** (§14.2).
 - Menüde "çizim yardımı" (snap) erişilebilirlik seçeneği vardır (§11.3).
 - Demoya bir sembol-kapı konur — kitle kendini filtreler.
 - **KURAL: Kritik yolda tek zorunlu bulmaca türü vardır (sembol-kapı); diğer her bulmaca opsiyoneldir.**
 
-Kapı estetiği: Mısır ikonografisi birebir alınmaz; **beton-brutalist soyut semboller** kullanılır ("hiçbir kültüre ait olmama" tekinsizliği + temsil/telif hassasiyeti).
+Kapı estetiği: Mısır ikonografisi birebir alınmaz; **beton-brutalist soyut semboller** kullanılır ("hiçbir kültüre ait olmama" tekinsizliği + temsil/telif hassasiyeti). Rezervuar'daki "bekçi adlı kapılar" (§7.3) bununla çelişmez: bekçi adları metin/atmosfer katmanıdır (duvar yazısı), sembol estetiği brutalist-soyut kalır.
 
 ### 4.5 Pusula [MVP] / üçgenleme [Hedef]
 
@@ -209,7 +209,9 @@ Kapı estetiği: Mısır ikonografisi birebir alınmaz; **beton-brutalist soyut 
 
 ### 4.6 Ruh Çarpışmaları [MVP] + is lekesi ley hattı [Hedef]
 
-Nadir sahne: siste düz bir hatta süzülen soluk ışık bir duvara ulaşır, titreşir, söner — duvarda **is lekesi** kalır. Tok, yönlü (3D) tek ses vuruşuyla gelir (§10.4). Saf atmosfer olayı değildir: ruhlar kutsal noktalar arasında düz uçtuğundan, **is lekelerinin hizası bir "ley hattı" pusulasıdır** — gizli navigasyon katmanı [Hedef]. Sembol-kapı ipucu sistemi (A6) bu hizayı kullanır.
+Nadir sahne: siste düz bir hatta süzülen soluk ışık bir duvara ulaşır, titreşir, söner — duvarda **is lekesi** kalır. Tok, yönlü (3D) tek ses vuruşuyla gelir (§10.4). Saf atmosfer olayı değildir: ruhlar kutsal noktalar arasında düz uçtuğundan, **is lekelerinin hizası bir "ley hattı" pusulasıdır** — gizli navigasyon katmanı [Hedef].
+
+**Etiket ayrımı:** Sembol-kapı çevresindeki **scripted is lekesi ipuçları [MVP]'dir** ve A6'nın "N denemeden sonra diegetik ipucu" kuralını karşılar (elle yerleştirilmiş, kapıya özel). İs lekelerinin labirent genelinde gizli "ley hattı" navigasyon katmanı olarak kullanımı **[Hedef]'tir** ve kesilmesi (§13.4) MVP ipucu sistemini etkilemez.
 
 ### 4.7 Kontrol şeması
 
@@ -227,6 +229,8 @@ Nadir sahne: siste düz bir hatta süzülen soluk ışık bir duvara ulaşır, t
 | E | Etkileşim (Kırık nesneleri, belgeler) |
 | Esc | Menü |
 
+**Gamepad / Steam Deck eşlemesi [MVP]:** Deck launch hedefi olduğundan (§12.6) gamepad şeması birinci sınıf vatandaştır: sol çubuk hareket, sağ çubuk bakış; **çizim = RT (püskürtme) + bakış yönü imleci, gyro ince ayar destekli** (Deck'te gyro varsayılan açık); LT silme; D-pad sol/sağ renk döngüsü (ya da tutunca radyal renk menüsü); Y pusula, A etkileşim; omuz tuşları fırça boyutu. **Gamepad'de "çizim yardımı" (snap, §11.3) varsayılan AÇIKTIR** — shape-matching toleransı girdi türünden bağımsız aynı kalır, hassasiyet farkını snap kapatır. Tüm tuşlar yeniden atanabilir.
+
 ### 4.8 Hareket hissi (A13)
 
 Yürüme temel tempodur; **koşma vardır, stamina yoktur**. Eğilme ve tırmanma **[Kesildi]**. Head-bob hafiftir ve kapatılabilir (§11.3). Devasalık hissi hareket hızı + FOV + ölçek kontrastıyla kalibre edilir — draw distance ile değil (§9.5).
@@ -241,7 +245,7 @@ Watcher iki bağımsız sorunun cevabıyla çalışır: **ne zaman belirir** (ya
 
 **(a) Belirme tetikleyicisi — yalnızlık sayacı:** rastgele spawn yoktur. Gizli sayaç şunlarla dolar: landmark görmeden / işaret bırakmadan geçen süre + anomali alanında kalış + (finalde) hikâye vuruşları. **Spam koruması (A4): aynı 5–10 m içindeki ardışık işaretler sayacı sıfırlamaz; sıfırlama = landmark GÖRME + yeni konumda işaret.**
 
-**(b) Belirme niteliği — dürüstlük sicili (A3):** sicil **5–6 ikili, itiraz edilemez sinyalden** oluşur:
+**(b) Belirme niteliği — dürüstlük sicili (A3):** sicil **5 ikili, itiraz edilemez sinyalden** oluşur (yeni sinyal ancak bu tabloya eklenerek tanımlanabilir; örtük sinyal yoktur):
 
 | Sinyal | Yön |
 |---|---|
@@ -310,6 +314,7 @@ Kayıt noktası = Gerçeklik Kırığı: devriye arabasına oturmak / telefon ah
 
 - **Tek kayıt profili**; kayıt = Kırık checkpoint'leri.
 - İstenen anda **"çıkış kaydı"** (exit save): tek kullanımlıktır, yüklenince silinir — soft-fail istismarını (save-scumming) önler.
+- **Son tekrar görme akışı:** final kararı verilmeden hemen önce oyun otomatik bir "eşik checkpoint'i" alır (Merkez, çocuk odası girişi); krediler sonrası "Eşiğe dön" seçeneğiyle diğer son görülebilir. NG+ olmadan iki sonun da erişilebilirliği bu tek checkpoint ile sağlanır; sicilin final varyantı (§5.1) her denemede o anki kovaya göre hesaplanır.
 - Kayıt verisi: darbe listesi + sicil + bayraklar; kilobaytlar mertebesinde (§12.5).
 
 ### 6.4 HUD yok ilkesi
@@ -343,7 +348,7 @@ Kevin Lynch'in beş öğesi (yol/kenar/bölge/düğüm/landmark) labirentin makr
 |---|---|---|---|---|---|---|---|---|
 | 1 | **Enkaz** | ~15 dk | Beton | Soğuyan motor tıkırtısı, cam kırığı, tek cızırtılı telsiz | Sprey, silme, pusula, ilk Kırık (araba) | — | Devriye arabası (tutorial checkpoint) | 1 (öğretim kapısı) |
 | 2 | **Sığlık** | ~30 dk (+opsiyonel ödüllü döngü ~10 dk) | Beton | Uzak rüzgâr, geniş beton uğultusu, seyrek güvercin kanadı | Landmark okuma, boya yaşlanması; ilk Ruh Çarpışması | **P1** | Telefon kulübesi (yapılmamış ihbar) | 1 |
-| 3 | **Batık Ofis Semti** | ~40 dk | Beton→Taş geçişi | Floresan vınlaması, kâğıt hışırtısı, asansör boşluğu uğultusu | Pusula anomalileri (Kırık dedektörü), kronoloji-lite belgeleri yoğunlaşır | — (Çizer sessiz; Watcher düzenli) | Arşiv odası (sahte tutanak), ofis masası | 1 |
+| 3 | **Batık Ofis Semti** | ~40 dk | Beton→Taş geçişi | Floresan vınlaması, kâğıt hışırtısı, asansör boşluğu uğultusu | Pusula anomalileri (Kırık dedektörü), kronoloji-lite (belge okuma) | — (Çizer sessiz; Watcher düzenli) | Arşiv odası (sahte tutanak), ofis masası | 1 |
 | 4 | **Rezervuar** | ~40–50 dk (+opsiyonel ödüllü döngü ~10 dk) | Taş→Boyalı (Duat; bekçi adlı kapılar) | Su damlası ve akıntı, metal inilti, derin yankı | **Fosforlu boya (5. renk)**, karanlık kılcallar, üçgenleme [Hedef], düşey katman | **P2** | Su basmış karakol koridoru (delil dolabı) | 1 |
 | 5 | **Haritalanamayan Merkez** | ~30–40 dk | Girit | Sessizliğe inen katmanlar; kalp atışına benzer uzak tok vuruş; finalde tek ninni motifi | Kural kırılmaları; damga hüküm hanesi; final kararı | **P3** | Çocuk odası (final; kayıt yok — bilinçli) | — (kapı değil, karar) |
 
@@ -392,12 +397,12 @@ Sesli anlatım, NPC, flashback, uzun ara sahne **[Kesildi]**. Hikâye üç kanal
 
 Her vaka 3–4 sembollük damgayla kayıtlıdır: **mekân + suç + tanık sayısı + hüküm boşluğu**. "Hüküm" hanesi hep boştur — final, oyuncunun kendi damgasındaki boşluğu doldurmasıdır (ya da bırakmasıdır). Fez/Tunic okulu: sözlük verilmez, tekrarla öğrenilir.
 
-- **[MVP] K15-lite (A8):** damgalar yalnızca **ana vaka Kırıklarında** görülür; "Tüy" sonu damga sistemine bağımlı olduğu için bu alt küme MVP'dedir.
+- **[MVP] Damga-lite (A8):** damgalar yalnızca **ana vaka Kırıklarında** görülür; "Tüy" sonu damga sistemine bağımlı olduğu için bu alt küme MVP'dedir.
 - **[Hedef] Tam üç katmanlı sözlük:** damgalar tüm labirente yayılır; yan vakalar okunabilir hale gelir.
 
 ### 8.4 Kırık'larda tek-çalışan-etkileşim ilkesi [Hedef]
 
-Her Kırık'ta **TEK çalışan** etkileşim vardır: cızırtılı telsiz, bir kez çalan telefon, yanıp sönen floresan. Tamamen ölü bir mekânda tek çalışan şey, hepsinden tekinsizdir. (MVP'de Kırıklar checkpoint + belge işleviyle yeterlidir; çalışan etkileşim cila katmanıdır.)
+Her Kırık'ta **TEK çalışan** etkileşim vardır: cızırtılı telsiz, bir kez çalan telefon, yanıp sönen floresan. Tamamen ölü bir mekânda tek çalışan şey, hepsinden tekinsizdir. **Etiket ayrımı:** Kırık'ın kayıt etkileşimi (arabaya oturma, ahizeyi kaldırma — §6.2) ve kanıt-belge etkileşimleri **[MVP]'dir**; buradaki "tek çalışan şey", bunların üzerine gelen atmosferik cila katmanıdır [Hedef].
 
 ### 8.5 Kronoloji-lite bulmacası [MVP] (A1)
 
@@ -432,7 +437,7 @@ Vertex snapping (titrek köşeler), affine texture mapping (perspektifsiz doku k
 
 ### 9.5 Devasalığın satılması
 
-Devasalık **siluet + ses + ölçek kontrastıyla** satılır; **draw distance ile DEĞİL** (sis 40–80 m kilidi ihlal edilmez). Araçlar: dar servis koridorundan 200 m'lik katedral avluya çıkış (devasalık ancak darla yan yana hissedilir); sis üstünden seçilen kule silueti; yankı kuyruğunun uzunluğu; kot farkından aşağı bakış [Hedef düşey katmanlar Rezervuar'da MVP'dedir].
+Devasalık **siluet + ses + ölçek kontrastıyla** satılır; **draw distance ile DEĞİL** (sis 40–80 m kilidi ihlal edilmez). Araçlar: dar servis koridorundan 200 m'lik katedral avluya çıkış (devasalık ancak darla yan yana hissedilir); sis üstünden seçilen kule silueti; yankı kuyruğunun uzunluğu; kot farkından aşağı bakış (Rezervuar'ın düşey katmanı [MVP]; diğer bölgelerde düşeylik [Hedef]).
 
 ---
 
@@ -487,7 +492,7 @@ Ana menü (Devam / Yeni / Seçenekler / Çıkış) + seçenekler (görüntü, se
 
 ### 12.1 Godot 4 mimarisi
 
-- Godot 4.x, Forward+ yerine **Compatibility/Mobile renderer** değerlendirmesi (PSX estetiği düşük uçta avantaj; Deck pil ömrü).
+- Godot 4.x; Forward+ yerine **Compatibility/Mobile renderer tercih edilir** (PSX estetiği düşük uçta avantaj; Deck pil ömrü). İlk sprintte iki renderer kısa karşılaştırmayla doğrulanır.
 - Hazır PSX görsel eklentisi (vertex snap + affine + dither) temel; üstüne Çizer tell shader'ı (yukarı akıntı, ton kayması) eklenir.
 - Sahne yapısı: bölge = sahne; hücreler alt sahneler; global sistemler (sicil, sayaç, Çizer yöneticisi, kayıt) autoload singleton'ları.
 
@@ -543,7 +548,9 @@ Kayıt = darbe listesi (pozisyon, normal, renk, boyut, yaş) + sicil kovaları +
 | Çizer: 3 perde + tell'ler + stroke-replay P3 + karşılaşma sahnesi | [MVP] |
 | Yeniden Emilme (A5 dozları) + Kırık checkpoint + exit save | [MVP] |
 | 5 bölge + Merkez kural kırılmaları | [MVP] |
-| Kronoloji-lite (ana vaka) + K15-lite damgalar | [MVP] |
+| Rezervuar düşey katmanı (çukur/rampa/üst geçit) | [MVP] |
+| Gamepad/Steam Deck kontrol eşlemesi (snap varsayılan açık) | [MVP] |
+| Kronoloji-lite (ana vaka) + damga-lite (ana vaka damgaları) | [MVP] |
 | 2 son (Tüy, Ağır Kalp) | [MVP] |
 | Erişilebilirlik matrisi (A12) | [MVP] |
 | Lokalizasyon mimarisi (EN/TR) | [MVP] |
@@ -568,7 +575,7 @@ Kayıt = darbe listesi (pozisyon, normal, renk, boyut, yaş) + sicil kovaları +
 |---|---|
 | **İlk sprint** | Motor kurulumu + **Merkez kural-kırılma prototipi** (en belirsiz iş, ilk çeyrekte — A16) + **decal/stroke-replay dikey dilimi** |
 | **Dikey dilim** | Enkaz + Sığlık'ın yarısı; loop'un 4 halkası + Çizer P1 + Watcher spawn + 1 sembol-kapı çalışır durumda |
-| **Demo** | Sığlık tabanlı; sprey+pusula öğretimi, ilk manyetik ölü nokta, 1 sembol-kapı; **Çizer'in ilk taklit anıyla biter** (Next Fest'ten ~3 hafta önce) |
+| **Demo** | Sığlık tabanlı; sprey+pusula öğretimi, bir manyetik ölü nokta, 1 sembol-kapı; **Çizer'in ilk taklit anıyla biter** (Next Fest'ten ~3 hafta önce). Demo ana oyun akışının birebir kesiti değildir: ana oyunda Batık Ofis'te tanıtılan manyetik ölü nokta, demoya özel olarak Sığlık zeminine eklenir |
 | **Content-complete** | 5 bölge, 2 son, kronoloji-lite, tüm MVP sistemleri |
 | **Polish** | Playtest/telemetri döngüleri (§14), erişilebilirlik, Deck doğrulaması, lokalizasyon |
 
@@ -593,6 +600,7 @@ Sıkışma halinde kesim şu sırayla yapılır: **İp sonu → tam damga sözl�
 - **Kapı deneme sayısı:** sembol-kapı başına başarısız çizim adedi ve pes etme oranı.
 - **Soft-fail sıklığı:** oyuncu başına, bölge başına.
 - **Bölge tamamlama süreleri:** medyan ve %10–%90 aralığı.
+- **Girdi türü kırılımı:** kapı deneme sayısı ve pes oranı klavye-fare ile gamepad/Deck için ayrı izlenir (snap varsayılanının yeterliliği bu veriyle doğrulanır).
 - Ek: Kırık kanıt etkileşimi tamamlama oranı (sicil sinyallerinin doğal dağılımı), son dağılımı.
 
 ### 14.2 Karara bağlı hipotezler
@@ -609,7 +617,7 @@ Sıkışma halinde kesim şu sırayla yapılır: **İp sonu → tam damga sözl�
 ## 15. Pazarlama Planı (kısa)
 
 - **Fiyat:** $9.99 ($14.99 ancak 4–5 saat + yüksek cilayla savunulabilirdi; bilinçli olarak güvenli banda konumlandık).
-- **Demo:** Sığlık tabanlı; sprey + pusula öğretilir, ilk manyetik ölü nokta yaşatılır, bir sembol-kapı içerir ve **Çizer'in oyuncunun işaretini taklit ettiği TEK anla biter** → cliffhanger + wishlist CTA.
+- **Demo:** Sığlık tabanlı; sprey + pusula öğretilir, bir manyetik ölü nokta yaşatılır (demoya özel — ana oyunda bu mekanik Batık Ofis'te tanıtılır), bir sembol-kapı içerir ve **Çizer'in oyuncunun işaretini taklit ettiği TEK anla biter** → cliffhanger + wishlist CTA.
 - **Next Fest:** demo, Next Fest'ten **~3 hafta önce** yayında (wishlist'lerin %68–88'i demoyu indirmeyenlerden gelir; demo oynayanların dönüşümü %18–25).
 - **Haunted PS1 Demo Disc** başvurusu + korku showcase'leri.
 - **Ara hedef: 2.000 wishlist** (Next Fest öncesi).
@@ -670,4 +678,4 @@ Sıkışma halinde kesim şu sırayla yapılır: **İp sonu → tam damga sözl�
 
 ---
 
-*— GDD sonu. Versiyon 1.0 (Final Taslak), Eylül 2026.*
+*— GDD sonu. Versiyon 1.1 (Final), Eylül 2026.*
