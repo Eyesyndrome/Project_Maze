@@ -17,20 +17,28 @@ let fails=0; const ok=(n,c,x='')=>{console.log((c?'  PASS ':'  FAIL ')+n+(x?'  [
 
   console.log('== Bozuk girdiye dayanıklılık ==');
   const bad = await p.evaluate(() => {
-    const before = doc.cells.length;
+    // loadText hataları yakalayıp toast'a çevirir; bu yüzden REDDİ dönüş değeriyle
+    // değil, belgenin DEĞİŞMEMİŞ olmasıyla doğrularız (aksi hâlde test totolojik olur).
     const cases = {};
-    const t = s => { try { loadText(s,'x.json'); return 'yuklendi'; } catch(e){ return 'THREW:'+e.message; } };
-    cases.bozukJson   = t('{ bu json degil');
-    cases.yanlisFormat= t('{"format":"baska_sey"}');
-    cases.bosNesne    = t('{}');
-    cases.eksikDiziler= t('{"format":"project_maze.maze","version":1,"meta":{"zoneId":"enkaz","gridW":5,"gridH":5}}');
-    cases.docSagKaldi = doc && doc.cells.length>0;
+    const sig = () => doc.cells.length+'/'+doc.edges.length+'/'+doc.markers.length+'/'+doc.meta.zoneId;
+    const reject = str => { const before=sig(); loadText(str,'x.json'); return sig()===before; };
+    createDoc('enkaz'); generate(1,0.7,{}); refreshAll();
+    cases.bozukJson    = reject('{ bu json degil');
+    cases.yanlisFormat = reject('{"format":"baska_sey","version":1}');
+    cases.bosNesne     = reject('{}');
+    cases.gelecekSurum = reject('{"format":"project_maze.maze","version":99,"meta":{"zoneId":"enkaz"}}');
+    // eksik diziler REDDEDİLMEZ, kafesten tamamlanır → burada değişim BEKLENİR
+    const before=sig();
+    loadText('{"format":"project_maze.maze","version":2,"meta":{"zoneId":"enkaz","gridW":5,"gridH":5}}','y.json');
+    cases.eksikDiziler = sig()!==before;
+    cases.docSagKaldi  = doc && doc.cells.length>0;
     return cases;
   });
-  ok('bozuk JSON çökmüyor', bad.bozukJson==='yuklendi');
-  ok('yanlış format reddediliyor', bad.yanlisFormat==='yuklendi');
-  ok('boş nesne çökmüyor', bad.bosNesne==='yuklendi');
-  ok('eksik cells/edges dizileri kafesten tamamlanıyor', bad.eksikDiziler==='yuklendi');
+  ok('bozuk JSON belgeyi DEĞİŞTİRMİYOR', bad.bozukJson);
+  ok('yanlış format gerçekten REDDEDİLİYOR', bad.yanlisFormat);
+  ok('boş nesne reddediliyor', bad.bosNesne);
+  ok('daha yeni şema sürümü reddediliyor (sessiz downgrade yok)', bad.gelecekSurum);
+  ok('eksik cells/edges dizileri kafesten tamamlanıyor', bad.eksikDiziler);
   const rec = await p.evaluate(()=>({cells:doc.cells.length, edges:doc.edges.length, W:doc.meta.gridW, H:doc.meta.gridH}));
   ok('eksik dizilerden sonra kafes tutarlı', rec.cells===rec.W*rec.H && rec.edges===rec.W*(rec.H-1)+(rec.W-1)*rec.H,
      rec.W+'x'+rec.H+' → '+rec.cells+' hücre, '+rec.edges+' kenar');
@@ -53,16 +61,17 @@ let fails=0; const ok=(n,c,x='')=>{console.log((c?'  PASS ':'  FAIL ')+n+(x?'  [
   console.log('\n== Kilitli bölge kopması yakalanıyor mu ==');
   const iso = await p.evaluate(() => {
     createDoc('enkaz'); generate(9,0.7,{});
-    // sağ alt 4x4'ü kilitle VE etrafını duvarla → kilitli ada
-    for(const c of doc.cells) c.locked = (c.x>=12 && c.y>=12);
+    // sağ alt köşeyi kilitle VE etrafını duvarla → kilitli ada (ızgaradan bağımsız)
+    const W=doc.meta.gridW, H=doc.meta.gridH, CX=W-4, CY=H-4;
+    for(const c of doc.cells) c.locked = (c.x>=CX && c.y>=CY);
     for(const e of doc.edges){ const [A,B]=edgeCells(e);
       if(A.locked!==B.locked) e.state='wall'; }
     const s=cellAt(0,0);
     doc.markers=[{id:newId('m'),type:'oyuncu_baslangic',cell:s.id,edge:null,label:'',props:{}}];
     reindex(); generate(4321,0.7,{}); reindex(); computeMetrics(); validate();
-    return {unreach:M.unreachable.length, err:ISSUES.some(i=>i.level==='err'&&i.tag==='§7.2')};
+    return {unreach:M.unreachable.length, expected:16, err:ISSUES.some(i=>i.level==='err'&&i.tag==='§7.2')};
   });
-  ok('kopan kilitli ada erişilemez olarak sayılıyor', iso.unreach===16, ''+iso.unreach+' hücre');
+  ok('kopan kilitli ada erişilemez olarak sayılıyor', iso.unreach===iso.expected, iso.unreach+'/'+iso.expected+' hücre');
   ok('§7.2 hatası veriliyor', iso.err);
 
   console.log('\n== Aşırı büyük ızgara (performans) ==');

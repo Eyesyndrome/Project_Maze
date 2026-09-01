@@ -1,8 +1,14 @@
-# `*.maze.json` — Şema (v1, DONDURULDU)
+# `*.maze.json` — Şema (v2)
 
 Bu dosya **Project Maze labirent yazım aracının** veri sözleşmesidir. Kaynak karar: **GDD §7.2**.
 Şema `tools/maze_tool.html` ile Godot importer'ı arasındaki **tek arayüzdür**; değişiklik yaparken
 `meta.version` artırılır ve bu dosyaya bir "Sürüm tarihçesi" satırı eklenir.
+
+> **v2 değişikliği (denetim sonrası):** marker'lara **yönelim** alanları eklendi (`props.face` /
+> `props.yaw`). Gerekçe: Godot importer marker'ları HER rebuild'de yeniden kurar (GDD §7.2
+> "iki import = sıfır diff"), dolayısıyla sahnede elle verilen rotasyon silinir — yön veride
+> yaşamak zorundadır. v1 dosyaları yüklenirken otomatik göç eder (yön tahmin edilir, yükleme
+> raporunda bildirilir). Araç kendinden **yeni** sürümlü bir dosyayı açmaz.
 
 **Temel ilkeler**
 
@@ -21,7 +27,7 @@ Bu dosya **Project Maze labirent yazım aracının** veri sözleşmesidir. Kayna
 ```jsonc
 {
   "format": "project_maze.maze",   // sabit imza — importer bunu doğrular
-  "version": 1,                    // şema sürümü
+  "version": 2,                    // şema sürümü
   "meta":    { ... },              // §2
   "nextId":  128,                  // bir sonraki serbest ID sayacı (monoton)
   "cells":   [ ... ],              // §3
@@ -43,7 +49,7 @@ Bu dosya **Project Maze labirent yazım aracının** veri sözleşmesidir. Kayna
 | `seed` | int | Son üretimde kullanılan tohum. |
 | `braid` | float 0..1 | Örgü oranı = **kaldırılan ölü uç yüzdesi**. Döngü oranını doğrudan kontrol eder. |
 | `criticalPathTargetMin` | float | Bu bölgenin GDD §7.3 kritik yol bütçesi (dk). |
-| `explorationFactor` | float | **Gerçek yürünen mesafe / en kısa yol** oranı. Sisli, haritalanmamış labirentte oyuncu en kısa yolu yürümez. GDD §7.3 kaybolma payını kritik yol bütçesinin **üstüne** koyduğu için bu çarpan **1.0–1.2** bandında tutulur; varsayılan `1.15`. |
+| `explorationFactor` | float | **Kaybolma payı.** GDD §7.3 payı kritik yol bütçesinin **ÜSTÜNE** koyar (tüm oyun için +10–15 dk) — bu yüzden **bütçe karşılaştırmasına GİRMEZ**, yalnız "beklenen medyan" satırını üretir. **1.0–1.2** bandında tutulur; varsayılan `1.15`. |
 | `fogMin`, `fogMax` | float | Sis bandı, metre. GDD sabiti: 40–80. |
 | `dwell` | object | Marker tipi → dakika. Kritik yol süre tahmininde duraklama payı. |
 | `criticalPath` | string[] \| null | Kritik yol için **sıralı marker ID listesi**. `null` ise araç otomatik türetir (`oyuncu_baslangic → sembol_kaynak(lar) → sembol_kapi`); bu türetme yalnız bir **alt sınırdır** — gerçek kritik yol Kırık, belge ve sahne duraklarını da gezer, o yüzden bölge tamamlandığında zincir elle kurulur. |
@@ -124,6 +130,39 @@ canon marker listesini genişletmek yerine hücre üstünde serbest metinli `pay
 doğrulayıcı bir ölü ucu "ödüyor" saymak için ya ödül sınıfı bir marker ya da dolu bir `payoff` metni arar.
 **Bu, GDD'ye işlenmemiş küçük bir eklentidir; sahibinin onayına sunulmuştur.**
 
+### 5.1.1 Diğer araç eklentileri (aynı statü — onay bekliyor)
+
+Denetim, aracın GDD'de bulunmayan iki eşik daha kullandığını ortaya çıkardı. İkisi de doğrulayıcıda
+`*` ile işaretlenir:
+
+- **Watcher spawn ↔ Kırık ≥ 10 m.** Kural §6.2'den savunulabilir (Kırık "dinlenme odası — aydınlık,
+  sissiz"; Watcher orada belirmemeli) ama **10 m sayısı §6.1'in soft-fail dokunulmazlık
+  yarıçapından ödünçtür**; §5.1c bu mesafeyi tanımlamaz.
+- **İs lekesi ipucu ↔ sembol-kapı ≤ 12 hücre.** §4.4 "yakındaki scripted is lekesi" der, sayı vermez.
+
+### 5.2 Marker yönelimi (v2) — importer için ZORUNLU
+
+Godot importer `*_generated.tscn`'i her rebuild'de sıfırdan kurar; sahnede elle verilen rotasyon
+kaybolur. Bu yüzden yön **veride** yaşar.
+
+| Alan | Kimde | Değer | Anlam |
+|---|---|---|---|
+| `props.face` | `cizer_slot`, `is_lekesi_ipucu`, `belge`, `ruh_carpismasi`, `sembol_kaynak` | `n` \| `e` \| `s` \| `w` | İşaretin asıldığı **duvar yüzü**. Godot: `n` = −Z, `e` = +X, `s` = +Z, `w` = −X. |
+| `props.yaw` | `oyuncu_baslangic`, `watcher_spawn` | derece (0 = kuzey/−Z, saat yönü) | **Bakış yönü.** Oyuncunun bölgeye giriş bakışı; Watcher'ın koreografi yönü (§5.1c). |
+
+Araç marker konurken `face`'i o hücrenin kapalı kenarlarından tahmin eder; geometri sonradan
+değişirse doğrulayıcı "yönünde duvar yok" uyarısı verir ve müfettişteki **⟂** düğmesi yeniden hizalar.
+
+### 5.3 Ölü uç ödeme sınıfları (`cells[].payoff`)
+
+Biçim: **`"<sınıf>: <metin>"`**. Sınıflar: `manzara`, `grafiti`, `landmark`, `enkaz`, `odul`
+(GDD §7.1-3'ün "Kırık / sembol / lore / manzara" kanalları + §7.7-3 grafiti).
+
+Sınıf, metin yazılmadan atanabilir — araç "triyaj yapıldı" ile "yazıldı" durumlarını ayrı sayar,
+çünkü bölge başına 70–100 ölü uç çıkabiliyor ve hepsine tek tek metin yazmak seansın en büyük
+mekanik yükü. Doğrulayıcı ayrıca **yinelenen ödeme metnini** yakalar: aynı grafitiyi iki ölü uca
+kopyalamak §7.7-3'ün "izlenebilir mikro-hikâye" şartını karşılamaz ve metriği sahte yeşile çevirir.
+
 ## 6. Koordinat ve pivot sözleşmesi (`pivotConvention: "cell_center_floor"`)
 
 - Izgara: `x` doğuya (+X), `y` güneye artar.
@@ -159,9 +198,27 @@ değiştirir. Kilitli bölgeye bağlantı, mevcut donmuş açık kenarlar üzeri
 | Sembol kaynağı → kapı yürüme süresi | ≤ 3 dk | §4.4 |
 | Bölge başına sembol-kapı | ≤ 1 | §4.4 |
 | Sis bandı | 40–80 m | §9.3, §12.4 |
-| Watcher spawn ↔ Kırık mesafesi | ≥ 10 m | §5.1c, §6.1 |
+| Watcher spawn ↔ kritik yol | sis bandı İÇİNDE (40–80 m) | §5.1c |
+| Sembol-kapı gerçek boğaz mı (bypass edilemez) | zorunlu | §4.4 |
+| Kritik yol tekrar yürüme oranı | ≤ %25 | §7.3 "backtracking YASAKTIR" |
+| Ana vaka belgeleri (`tur: tutanak\|kronoloji`) | Kırık'ta veya komşusunda | §8.1, §8.4 |
+| Çizer yuvası kavşakta (derece ≥ 2) | zorunlu | §5.2 "yanlış KAVŞAKTA" |
+| İs lekesi ipucu ↔ sembol-kapı | ≤ 12 hücre | §4.4 "yakındaki" |
+| Marker yönelimi (`face`/`yaw`) | dolu ve duvara bakar | SEMA §5.2 |
+| Tek yön kapısı tuzağı (başlangıca dönülemiyor) | 0 | §7.1-4 |
 
-**Süre formülü:**
+**Süre formülü (v2'de düzeltildi):**
+
+```
+bütçe_kıyası_dk = zincir_adım × cellSize / walkSpeed / 60 + Σ dwell(yoldaki marker'lar)
+beklenen_medyan  = zincir_adım × cellSize / walkSpeed / 60 × explorationFactor + Σ dwell
+```
+
+`criticalPathTargetMin` ile karşılaştırılan **yalnız `bütçe_kıyası_dk`**'dır. (v1'de kaybolma
+payı kıyasa dahildi; bu, bölge bütçesinin %15 altındayken "yeşil" görünmesine yol açıyordu —
+GDD §7.3'ün açık ifadesine aykırıydı.)
+
+**Eski formül (v1, artık kullanılmıyor):**
 `toplam_dk = (kritik_yol_hücre_sayısı × cellSize / walkSpeed / 60) × explorationFactor + Σ dwell(yoldaki marker'lar)`
 
 **Ölçek uyarısı (araçtan çıkan bulgu):** GDD §7.3'ün dakika bütçeleri, saf *en kısa yol* yürümesiyle
@@ -173,3 +230,8 @@ karşılanamaz. Varsayılanlar (`cellSize 6 m`, `walkSpeed 1.4 m/s`, `exploratio
 ## 9. Sürüm tarihçesi
 
 - **v1 (2026-09-01)** — İlk dondurma. GDD §7.2'deki karar seti birebir uygulandı. Tek eklenti: `cells[].payoff` (§5.1).
+- **v2 (2026-09-01)** — Bağımsız canon denetimi + level designer denetimi sonrası:
+  `props.face` / `props.yaw` marker yönelimi eklendi (§5.2 — importer'ın önkoşuluydu);
+  `payoff` sınıflandırıldı (§5.3); süre formülünden kaybolma payı çıkarıldı (§8);
+  yeni canon denetimleri (kapı bypass, backtracking, belge↔Kırık, Çizer kavşağı, yönelim).
+  v1 dosyaları otomatik göç eder.

@@ -140,10 +140,10 @@ const ok = (n,c,extra='') => { console.log((c?'  PASS ':'  FAIL ')+n+(extra?'  [
     // marker'lar ekle
     const s = doc.cells.find(c=>isPass(c));
     doc.markers = [];
-    doc.markers.push({id:newId('m'), type:'oyuncu_baslangic', cell:s.id, edge:null, label:'giris', props:{}});
+    doc.markers.push({id:newId('m'), type:'oyuncu_baslangic', cell:s.id, edge:null, label:'giris', props:defaultProps('oyuncu_baslangic', s)});
     const dEdge = doc.edges.find(e=>e.state==='open');
     dEdge.state='door';
-    doc.markers.push({id:newId('m'), type:'sembol_kapi', cell:null, edge:dEdge.id, label:'', props:{symbolId:'sym_1'}});
+    doc.markers.push({id:newId('m'), type:'sembol_kapi', cell:null, edge:dEdge.id, label:'', props:defaultProps('sembol_kapi', cellById(dEdge.a))});
     reindex();
     const t1 = serialize(doc);
     adoptDoc(JSON.parse(t1));
@@ -229,7 +229,7 @@ const ok = (n,c,extra='') => { console.log((c?'  PASS ':'  FAIL ')+n+(extra?'  [
     const manual = M.cp.walkMin;
     // hız iki katına çıkarsa süre yarıya inmeli
     doc.meta.walkSpeed *= 2; computeMetrics();
-    return {ok:M.cp.ok, steps:M.cp.cells.length-1, manual:+manual.toFixed(3), half:+M.cp.walkMin.toFixed(3), total:+M.cp.totalMin.toFixed(2)};
+    return {ok:M.cp.ok, steps:M.cp.cells.length-1, manual:+manual.toFixed(3), half:+M.cp.walkMin.toFixed(3), total:+M.cp.budgetMin.toFixed(2)};
   });
   ok('kritik yol bulundu', cp.ok, cp.steps+' adım, '+cp.total+' dk');
   ok('walkSpeed×2 → yürüme süresi ÷2', Math.abs(cp.manual/2 - cp.half) < 0.01, cp.manual+' → '+cp.half);

@@ -82,7 +82,10 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .tools button.on .k{color:var(--acc)}
 
 /* --- listeler --- */
-.list{display:flex;flex-direction:column;gap:3px;max-height:230px;overflow-y:auto}
+.list{display:flex;flex-direction:column;gap:3px;max-height:360px;overflow-y:auto}
+.list::-webkit-scrollbar{width:9px}
+.list::-webkit-scrollbar-thumb{background:var(--line2);border-radius:5px}
+.list::-webkit-scrollbar-track{background:var(--bg)}
 .list .it{
   display:flex;align-items:center;gap:7px;padding:4px 6px;border:1px solid transparent;
   border-radius:4px;cursor:pointer;
@@ -210,6 +213,11 @@ button:disabled{opacity:.4;cursor:not-allowed}
       <div class="sep"></div>
       <div class="row wide"><label>Not</label></div>
       <textarea id="fNotes" placeholder="Bölge tasarım notu…"></textarea>
+      <div class="sep"></div>
+      <div class="row wide"><label>Duraklama (dk)</label></div>
+      <div id="dwellEditor"></div>
+      <p class="hint">Marker tipi başına duraklama süresi. Süre bütçesinin üçte birini bunlar taşır ve
+      <b>hepsi tahmindir</b> — playtest'te ölçülüp güncellenecek ilk şey budur.</p>
     </div></div>
 
     <div class="panel collapsed" id="pZones"><h2>Alt-bölge paleti</h2><div class="body">
@@ -253,10 +261,15 @@ button:disabled{opacity:.4;cursor:not-allowed}
       <p class="hint" id="markerHint"></p>
     </div></div>
 
-    <div class="panel" id="pMetrics"><h2>Lynch metrikleri</h2><div class="body" id="metrics"></div></div>
-
     <div class="panel" id="pIssues"><h2>Doğrulama <span id="issCount" style="color:var(--fg3)"></span></h2>
       <div class="body"><div id="issues"></div></div></div>
+
+    <div class="panel" id="pMetrics"><h2>Lynch metrikleri</h2><div class="body" id="metrics"></div></div>
+
+    <div class="panel collapsed" id="pTempo"><h2>Tempo şeridi (§7.7-2)</h2><div class="body" id="tempoBody"></div></div>
+
+    <div class="panel collapsed" id="pDebt"><h2>Ölü uç borcu</h2><div class="body" id="debtBody"></div></div>
+
   </aside>
 </div>
 
@@ -265,7 +278,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
 /* ==========================================================================
    0. SABİTLER — hepsi GDD'den türetilmiştir; araç yeni sabit icat etmez.
    ========================================================================== */
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const FORMAT = "project_maze.maze";
 
 const LYNCH = {
@@ -273,25 +286,32 @@ const LYNCH = {
   loopTol:    0.05,      // %65–75 kabul bandı
   corridorSec: 60,       // GDD §7.1-1 "60 saniye kuralı"
   symbolWalkMaxMin: 3,   // GDD §4.4 "kapıya yürüme ≤ 2–3 dk"
-  kirikSafeM: 10,        // GDD §6.1 "Kırık'ların 10 m çevresi dokunulmaz"
-  pathTolMin: 0.15       // hedef süreden ±%15 sapma kabul
+  // ARAÇ EKLENTİSİ (onay bekliyor): GDD §6.2 Kırık'ı "dinlenme odası (aydınlık,
+  // sissiz — korku ritminin nefesi)" yapar, dolayısıyla Watcher orada belirmemeli.
+  // Ama 10 m sayısı §6.1'in SOFT-FAIL dokunulmazlık yarıçapından ödünç alınmıştır;
+  // §5.1c bu mesafeyi tanımlamaz. Bkz. SEMA §5.2.
+  kirikSafeM: 10,
+  pathTolMin: 0.15,      // hedef süreden ±%15 sapma kabul
+  repeatMax: 0.25,       // GDD §7.3 "backtracking YASAKTIR" — tekrar yürüme tavanı
+  exploreMax: 1.2,       // §7.3: kaybolma payı bütçenin ÜSTÜNE gelir → 1.0–1.2
+  ipucuMaxCells: 12      // §4.4 "YAKINDAKİ scripted is lekesi" (araç eşiği — onay bekliyor)
 };
 
 // Bölge ön ayarları — GDD §7.3 tablosu.
 const ZONE_PRESETS = {
   enkaz: {
-    name:"Enkaz", w:16, h:16, target:15, kirik:1, kapi:1, ruh:0, perde:null,
+    name:"Enkaz", w:20, h:20, target:15, kirik:1, kapi:1, ruh:0, perde:null,
     zones:[{id:"enkaz_cekirdek",name:"Enkaz çekirdeği",color:"#3a3f46"},
            {id:"guvenli_oda",  name:"Güvenli oda (öğretim)",color:"#2f4858"}]
   },
   sighlik_2a: {
-    name:"Sığlık", w:34, h:32, target:37, kirik:1, kapi:1, ruh:1, perde:"p1",
+    name:"Sığlık", w:42, h:38, target:37, kirik:1, kapi:1, ruh:1, perde:"p1",
     zones:[{id:"avlular",name:"Geniş avlular",color:"#3c4450"},
            {id:"servis",  name:"Dar servis koridorları",color:"#2c333c"},
            {id:"cevre_galerisi",name:"Çevre galerisi (ops. döngü)",color:"#2f4a3a"}]
   },
   derin_sighlik_2b: {
-    name:"Derin Sığlık", w:34, h:32, target:37, kirik:1, kapi:1, ruh:0, perde:"p2",
+    name:"Derin Sığlık", w:42, h:38, target:37, kirik:1, kapi:1, ruh:0, perde:"p2",
     zones:[{id:"tas_katman",name:"Taş katman",color:"#3b3a30"},
            {id:"duat_izleri",name:"Duat izleri",color:"#2e3a4d"},
            {id:"dusey_setpiece",name:"Düşey set-piece",color:"#4a3a2e"}]
@@ -314,7 +334,7 @@ const MARKERS = {
                       hint:"perde: p1=2a kopya, p2=2b çarpıtma, p3=Merkez öngörü. Enkaz'da Çizer YOKTUR."},
   is_lekesi_ipucu:   {label:"İs lekesi ipucu", g:"İ", c:"#c9d1d9", on:"cell", reward:true, dwell:0.3,
                       hint:"Sembol-kapı ipucu; N=3 başarısız denemeden sonra belirir (GDD §4.4/§4.6)."},
-  belge:             {label:"Belge / grafiti", g:"B", c:"#79c0ff", on:"cell", reward:true, dwell:1.5,
+  belge:             {label:"Belge / grafiti", g:"B", c:"#e3b341", on:"cell", reward:true, dwell:1.5,
                       hint:"tur: tutanak | kronoloji | grafiti. Ölü ucun borcunu metinle öder (§7.7-3)."},
   ruh_carpismasi:    {label:"Ruh çarpışması", g:"R", c:"#f0f6fc", on:"cell", reward:true, dwell:0.75,
                       hint:"Yalnız 2 scripted sahne: 2a'da 1, Merkez Eşiği'nde 1 (GDD §4.6)."},
@@ -325,9 +345,32 @@ const MARKERS = {
 };
 const MARKER_ORDER = Object.keys(MARKERS);
 
+/* Marker yönelimi (SEMA v2). Godot importer marker'ları HER rebuild'de yeniden
+   kurar (§7.2 "iki import = sıfır diff"), dolayısıyla sahnede elle verilen rotasyon
+   silinir — yön veride yaşamak zorundadır.
+     face : duvara asılanlar (Çizer işareti, is lekesi, grafiti, ruh çarpışması izi)
+     yaw  : bakış yönü isteyenler (oyuncu başlangıcı, Watcher spawn koreografisi) */
+const FACE_DIRS=[{id:"n",label:"Kuzey (−Z)",dx:0,dy:-1},{id:"e",label:"Doğu (+X)",dx:1,dy:0},
+                 {id:"s",label:"Güney (+Z)",dx:0,dy:1},{id:"w",label:"Batı (−X)",dx:-1,dy:0}];
+const NEEDS_FACE = new Set(["cizer_slot","is_lekesi_ipucu","belge","ruh_carpismasi","sembol_kaynak"]);
+const NEEDS_YAW  = new Set(["oyuncu_baslangic","watcher_spawn"]);
+
+/* Ölü uç ödeme sınıfları (GDD §7.1-3'ün "Kırık / sembol / lore / manzara" kanalları
+   + §7.7-3 grafiti). Biçim: "<sınıf>: <metin>". Sınıf, metin yazılmadan önce
+   atanabilir — böylece "triyaj" ile "yazılmış" ayrı ayrı ölçülür. */
+const PAYOFF_CLASSES = [
+  {id:"manzara",  label:"Manzara",        hint:"Sisin üstünden landmark / geniş açıklığa bakış (§7.1-2, §9.5)"},
+  {id:"grafiti",  label:"Grafiti",        hint:"Kurban grafitisi — izlenebilir mikro-hikâye (§7.7-3, §8.2)"},
+  {id:"landmark", label:"Landmark görüşü",hint:"Ulaşılamayan landmark görüş hattı tacizi (§7.1-5)"},
+  {id:"enkaz",    label:"Enkaz / mekân",  hint:"Yutulmuş parça, mekânla anlatım (§8.1)"},
+  {id:"odul",     label:"Ödül",           hint:"Kestirme açılımı / opsiyonel döngü ödülü (§7.1-3)"}
+];
+const payoffClass = t => { const m=/^([a-z_]+)\s*:/.exec((t||"").trim()); return m && PAYOFF_CLASSES.some(c=>c.id===m[1]) ? m[1] : null; };
+const payoffDetail = t => { const i=(t||"").indexOf(":"); return i<0 ? "" : t.slice(i+1).trim(); };
+
 const CELL_KINDS = {
   normal:{label:"Normal koridor", color:"#232a33", pass:true,  gen:true},
-  room:  {label:"Oda / avlu",     color:"#2b333d", pass:true,  gen:true},
+  room:  {label:"Oda / avlu",     color:"#39424e", pass:true,  gen:false},
   manual:{label:"Manuel (importer dokunmaz)", color:"#3d2f42", pass:true, gen:false},
   void:  {label:"Boşluk (labirent dışı)",     color:"#0d1117", pass:false, gen:false}
 };
@@ -383,7 +426,7 @@ function createDoc(zoneId){
       gridW: P.w, gridH: P.h,
       cellSize: 6.0, walkSpeed: 1.4, pivotConvention:"cell_center_floor",
       seed: (Math.random()*1e9)|0, braid: LYNCH.loopTarget,
-      criticalPathTargetMin: P.target, explorationFactor: 1.15,
+      criticalPathTargetMin: P.target, explorationFactor: 1.15,  // yalnız MEDYAN tahmininde; bütçe kıyası paysız
       fogMin: 40, fogMax: 80,
       dwell: defaultDwell(),
       criticalPath: null,
@@ -435,7 +478,7 @@ function reindex(){
     if(m.cell){ if(!markByCell.has(m.cell)) markByCell.set(m.cell,[]); markByCell.get(m.cell).push(m); }
     if(m.edge){ if(!markByEdge.has(m.edge)) markByEdge.set(m.edge,[]); markByEdge.get(m.edge).push(m); }
   }
-  ix={W,H,cellById,cellAt,edgeById,edgeKey,markById,markByCell,markByEdge,markByType};
+  ix={W,H,cellById,cellAt,edgeById,edgeKey,markById,markByCell,markByEdge,markByType,_adj:null};
 }
 const cellAt   = (x,y)=> (x<0||y<0||x>=ix.W||y>=ix.H) ? null : ix.cellAt[y*ix.W+x];
 const cellById = id => ix.cellById.get(id)||null;
@@ -457,7 +500,9 @@ function edgeOpen(e){
 // SEMA §7 — kilit-sınır kuralı: ucu üretilemez hücreye değen kenar dokunulmaz.
 function edgeGeneratable(e){
   const [A,B]=edgeCells(e);
-  return isGen(A) && isGen(B);
+  if(!isGen(A) || !isGen(B)) return false;
+  if((ix.markByEdge.get(e.id)||[]).length) return false;   // sembol-kapı vb. korunur
+  return true;
 }
 function neighbors(c){
   const r=[];
@@ -484,7 +529,10 @@ function generate(seed, braid, opts){
   if(!gen.length) return {carved:0, deadEnds:0, braided:0};
 
   // 1) Üretilebilir kenarları sıfırla (donmuş kenarlara DOKUNMA).
-  for(const e of doc.edges) if(edgeGeneratable(e)) e.state="wall";
+  //    Marker taşıyan kenar da donuktur: sembol-kapı marker'ı yerinde kalıp kenarın
+  //    duvara dönmesi geometriyi sessizce bozuyordu.
+  for(const e of doc.edges)
+    if(edgeGeneratable(e) && !(ix.markByEdge.get(e.id)||[]).length) e.state="wall";
 
   const genSet = new Set(gen.map(c=>c.id));
   const visited = new Set();
@@ -597,19 +645,45 @@ function buildGraph(){
   }
   return {nodes, adj};
 }
-// Yönsüz erişilebilirlik (tek yön kapıları yok sayar — geometri kontrolü).
+// Yönlü erişilebilirlik — tek yönlü kapılara SAYGILI (GDD §7.1-4 canon).
+// (Eskiden yönsüzdü: ters yönlü bir kapının arkasında kalan hücreler "erişilebilir"
+//  sayılıyor, §7.2 denetimi sessizce yanlış cevap veriyordu.)
 function reachableFrom(startId, adj){
   const seen=new Set([startId]); const q=[startId];
-  while(q.length){ const u=q.pop(); for(const {to} of (adj.get(u)||[])) if(!seen.has(to)){seen.add(to);q.push(to);} }
+  while(q.length){
+    const u=q.pop(), uc=cellById(u);
+    for(const {to,e} of (adj.get(u)||[])){
+      if(seen.has(to) || !canTraverse(e, uc)) continue;
+      seen.add(to); q.push(to);
+    }
+  }
   return seen;
 }
+// Geriye dönüş: hedeften başlangıca yönlü yol var mı? (tek yön tuzağı denetimi)
+function canReturnTo(startId, adj, from){
+  const seen=new Set([from]); const q=[from];
+  while(q.length){
+    const u=q.pop(), uc=cellById(u);
+    if(u===startId) return true;
+    for(const {to,e} of (adj.get(u)||[])){
+      if(seen.has(to) || !canTraverse(e, uc)) continue;
+      seen.add(to); q.push(to);
+    }
+  }
+  return seen.has(startId);
+}
 // Yönlü BFS (tek yön kapılarına saygılı) — kritik yol için.
+function adjacency(){
+  if(!ix._adj) ix._adj = buildGraph().adj;
+  return ix._adj;
+}
 function bfsPath(startId, goalId){
   if(startId===goalId) return [startId];
+  const adj=adjacency();
   const prev=new Map([[startId,null]]); const q=[startId];
   for(let h=0;h<q.length;h++){
     const u=q[h], uc=cellById(u);
-    for(const {to,e} of (ix._adj.get(u)||[])){
+    for(const {to,e} of (adj.get(u)||[])){
       if(prev.has(to)) continue;
       if(!canTraverse(e, uc)) continue;
       prev.set(to,u);
@@ -618,6 +692,30 @@ function bfsPath(startId, goalId){
     }
   }
   return null;
+}
+/* Görüş hattı (§7.1-1 / §7.1-5): her hücreden 4 eksende kesintisiz açık koşu.
+   Sis 40–80 m olduğu için "sis mesafesi içinde ipucu görünür" kuralının ölçülebilir
+   vekili budur. Uzun düz koşu yalnız borç (60 sn) değil, KAYNAK'tır: manzara /
+   landmark hattı / görüş hattı tacizi. */
+function computeSight(nodes){
+  const sight=new Map();
+  const step=(c,dx,dy)=>{
+    let n=0, cur=c;
+    for(;;){
+      const nx=cur.x+dx, ny=cur.y+dy, nb=cellAt(nx,ny);
+      if(!nb || !isPass(nb)) break;
+      const e=edgeBetween(cur.x,cur.y,nx,ny);
+      if(!edgeOpen(e)) break;
+      n++; cur=nb;
+      if(n>256) break;
+    }
+    return n;
+  };
+  for(const c of nodes){
+    const runs=[step(c,1,0)+step(c,-1,0)+1, step(c,0,1)+step(c,0,-1)+1];  // yatay, dikey
+    sight.set(c.id, Math.max(runs[0],runs[1]) * doc.meta.cellSize);
+  }
+  return sight;
 }
 // Köprüler (bridge) — Tarjan, iteratif. Köprü OLMAYAN kenarlar döngü üstündedir.
 function findBridges(adj, nodes){
@@ -692,25 +790,50 @@ function computeMetrics(){
   const unpaid = deadEnds.filter(c=>!isPaid(c));
   const isolated = scope.filter(c=>deg.get(c.id)===0);
 
-  // --- 60 sn kuralı: ayırt edici öğesiz koridor koşuları
+  // --- 60 sn kuralı (§7.1-1): ölçülen şey koridorun TAMAMI değil, iki ayırt edici
+  //     öğe ARASINDAKİ en uzun boşluktur. (Eskiden koridorda tek bir öğe olması
+  //     124 saniyelik düzlüğü de "temiz" gösteriyordu.)
   const secPerCell = doc.meta.cellSize / Math.max(0.1, doc.meta.walkSpeed);
+  const hasFeature = rc => (ix.markByCell.get(rc.id)||[]).length>0 || rc.kind==="room" || (rc.payoff||"").trim();
   const corrSeen = new Set(); const badRuns=[];
   for(const c of scope){
     if(deg.get(c.id)!==2 || corrSeen.has(c.id)) continue;
-    const run=[]; const q=[c.id]; corrSeen.add(c.id);
-    while(q.length){
-      const u=q.pop(); const uc=cellById(u); run.push(uc);
-      for(const {to} of (adj.get(u)||[])){
-        if(corrSeen.has(to) || deg.get(to)!==2) continue;
-        corrSeen.add(to); q.push(to);
-      }
+    // koşuyu SIRALI yürü (uçtan uca), böylece öğeler arası boşluk ölçülebilsin
+    let head=c;
+    const walk=(from,prev)=>{ const out=[];
+      let cur=from, last=prev;
+      for(;;){ const nx=(adj.get(cur.id)||[]).map(x=>x.to).filter(id=>id!==last && deg.get(id)===2);
+        if(nx.length!==1) break; last=cur.id; cur=cellById(nx[0]); if(out.includes(cur)) break; out.push(cur); }
+      return out; };
+    const left=walk(c,null);
+    head = left.length? left[left.length-1] : c;
+    const ordered=[head, ...walk(head,null)];
+    ordered.forEach(rc=>corrSeen.add(rc.id));
+    // uçlardaki kavşak/ölü uç hücreleri de "ayırt edici" sayılır (karar noktasıdır)
+    let gap=0, worst=0, worstStart=ordered[0];
+    let runStart=ordered[0];
+    for(const rc of ordered){
+      if(hasFeature(rc)){ gap=0; runStart=rc; }
+      else { gap++; if(gap>worst){ worst=gap; worstStart=runStart; } }
     }
-    // "ayırt edici öğe" = dünyada görülen bir şey: marker, oda/avlu ya da ödeme (manzara/grafiti).
-    // Tasarımcı notu (`note`) sayılmaz — oyuncu onu görmez.
-    const featured = run.some(rc =>
-      (ix.markByCell.get(rc.id)||[]).length>0 || rc.kind==="room" || (rc.payoff||"").trim());
-    const sec = run.length*secPerCell;
-    if(!featured && sec > LYNCH.corridorSec) badRuns.push({cells:run, sec});
+    const sec = worst*secPerCell;
+    if(sec > LYNCH.corridorSec) badRuns.push({cells:ordered, gapCells:worst, sec, focus:worstStart});
+  }
+
+  // --- görüş hattı ve kavşak istatistiği
+  const sight = computeSight(scope);
+  const junctions = scope.filter(c=>deg.get(c.id)>=3);
+  const fogOK = junctions.filter(c=>(sight.get(c.id)||0) >= doc.meta.fogMin).length;
+  const degHist = {1:0,2:0,3:0,4:0};
+  for(const c of scope){ const d=deg.get(c.id); if(degHist[d]!=null) degHist[d]++; }
+
+  // --- tek yön tuzağı (§7.1-4 kısayol tek yönlüdür, ama oyuncuyu kilitlememeli)
+  const oneWayTraps=[];
+  if(startCell && doc.edges.some(e=>edgeOpen(e)&&e.dir!=="both")){
+    for(const c of scope){
+      if(!reach || !reach.has(c.id)) continue;
+      if(!canReturnTo(startCell.id, adj, c.id)) oneWayTraps.push(c);
+    }
   }
 
   // --- kritik yol
@@ -724,7 +847,8 @@ function computeMetrics(){
     passTotal: nodes.length, scopeTotal: scope.length,
     loopCells, loopRatio, branchRatio: 1-loopRatio,
     deadEnds, unpaid, isolated, unreachable, badRuns,
-    startCell, cp, counts, secPerCell,
+    sight, junctions, fogOK, degHist, oneWayTraps,
+    startCell, cp, counts, secPerCell, hasStart: !!startCell,
     openEdges: doc.edges.filter(edgeOpen).length,
     doors: doc.edges.filter(e=>e.state==="door").length,
     oneWays: doc.edges.filter(e=>edgeOpen(e)&&e.dir!=="both").length
@@ -732,12 +856,20 @@ function computeMetrics(){
   return M;
 }
 
-/* Kritik yol: sıralı marker zinciri → yönlü BFS parçaları. */
+/* Kritik yol: sıralı marker zinciri → yönlü BFS parçaları.
+
+   GDD §7.3 uyumu: bölge bütçesi SAF kritik yol süresidir — "kaybolma payı ve
+   opsiyonel ödüllü döngü bunun ÜSTÜNE gelir". Bu yüzden bütçeyle karşılaştırılan
+   sayı `budgetMin = yürüme + duraklama`; kaybolma payı ayrı bir bilgi satırıdır
+   (`medianMin`) ve bütçe kararına GİRMEZ. */
 function computeCriticalPath(){
-  const out={waypoints:[], cells:[], ok:false, err:null, walkMin:0, dwellMin:0, totalMin:0, legs:[]};
+  const out={waypoints:[], cells:[], ok:false, err:null, dangling:[],
+             walkMin:0, dwellMin:0, budgetMin:0, medianMin:0, legs:[],
+             uniqueCells:0, repeatRatio:0, auto:true};
   let wp = doc.meta.criticalPath;
-  if(!Array.isArray(wp) || !wp.length){
-    // otomatik türetme: başlangıç → sembol kaynak(ları) → sembol kapı
+  out.auto = !(Array.isArray(wp) && wp.length);
+  if(out.auto){
+    // otomatik türetme: başlangıç → sembol kaynak(ları) → sembol kapı (ALT SINIR)
     const s=(ix.markByType.get("oyuncu_baslangic")||[])[0];
     const src=(ix.markByType.get("sembol_kaynak")||[]);
     const door=(ix.markByType.get("sembol_kapi")||[]);
@@ -747,14 +879,16 @@ function computeCriticalPath(){
   }
   const pts=[];
   for(const id of wp){
-    const m=ix.markById.get(id); if(!m) continue;
+    const m=ix.markById.get(id);
+    if(!m){ out.dangling.push(id); continue; }        // sessizce ATLAMA — rapor et
     let c=null;
     if(m.cell) c=cellById(m.cell);
     else if(m.edge){ const e=edgeById(m.edge); if(e) c=cellById(e.a); }
     if(c && isPass(c)) pts.push({m, c});
+    else out.dangling.push(id);
   }
   out.waypoints=pts;
-  if(pts.length<2){ out.err="Kritik yol için en az 2 durak gerekir (oyuncu_baslangic + sembol_kapi)."; return out; }
+  if(pts.length<2){ out.err="Kritik yol için en az 2 geçerli durak gerekir (oyuncu_baslangic + sembol_kapi)."; return out; }
 
   const cells=[pts[0].c.id];
   for(let i=0;i<pts.length-1;i++){
@@ -765,10 +899,19 @@ function computeCriticalPath(){
   }
   out.cells=cells; out.ok=true;
 
+  // GDD §7.3: "Süreyi doldurmak için backtracking eklemek YASAKTIR."
+  // Zincir aynı hücreleri tekrar geziyorsa dakika tekrar yürümeyle şişiyor demektir.
+  const uniq=new Set(cells);
+  out.uniqueCells=uniq.size;
+  out.repeatRatio = cells.length>1 ? 1 - uniq.size/cells.length : 0;
+  // hangi hücreler birden fazla geçiliyor (çizim için)
+  const seenOnce=new Set(); const rep=new Set();
+  for(const id of cells){ if(seenOnce.has(id)) rep.add(id); else seenOnce.add(id); }
+  out.repeatCells=rep;
+
   const steps = cells.length-1;
   out.walkMin = steps * doc.meta.cellSize / Math.max(0.1,doc.meta.walkSpeed) / 60;
-  out.exploreMin = out.walkMin * Math.max(1, doc.meta.explorationFactor||1);
-  // yoldaki (ve yola komşu) marker'ların duraklama payı
+  // yoldaki marker'ların duraklama payı
   const onPath=new Set(cells); const counted=new Set();
   let dwell=0;
   for(const m of doc.markers){
@@ -780,7 +923,17 @@ function computeCriticalPath(){
     dwell += (doc.meta.dwell && doc.meta.dwell[m.type]!=null) ? doc.meta.dwell[m.type] : (MARKERS[m.type]?MARKERS[m.type].dwell:0);
   }
   out.dwellMin=dwell;
-  out.totalMin=out.exploreMin+dwell;
+  out.budgetMin=out.walkMin+dwell;                                        // §7.3 ile kıyaslanan
+  out.medianMin=out.walkMin*Math.max(1,doc.meta.explorationFactor||1)+dwell; // bilgi: beklenen medyan
+
+  // Kırık aralığı (§6.1/§6.2): soft-fail oyuncuyu son Kırık'a döndürür.
+  let sinceKirik=0, worstKirik=0;
+  for(const id of cells){
+    const ms=ix.markByCell.get(id)||[];
+    if(ms.some(m=>m.type==="kirik_checkpoint")) sinceKirik=0;
+    else { sinceKirik++; if(sinceKirik>worstKirik) worstKirik=sinceKirik; }
+  }
+  out.worstKirikMin = worstKirik * doc.meta.cellSize / Math.max(0.1,doc.meta.walkSpeed) / 60;
   return out;
 }
 
@@ -820,7 +973,7 @@ function validate(){
   }
 
   if(M.unreachable.length)
-    add("err","§7.2",M.unreachable.length+" geçilebilir hücre başlangıçtan <b>erişilemiyor</b>. Kilitli bölge dikişi kopmuş olabilir (SEMA §7).",{t:"cell",id:M.unreachable[0].id});
+    add("err","§7.2",M.unreachable.length+" geçilebilir hücre başlangıçtan <b>erişilemiyor</b> (tek yönlü kapılara saygılı ölçüm). Kilitli bölge dikişi kopmuş olabilir (SEMA §7).",{t:"cell",id:M.unreachable[0].id});
   if(M.isolated.length)
     add("warn","§7.2",M.isolated.length+" hücrenin hiç açık kenarı yok (izole).",{t:"cell",id:M.isolated[0].id});
 
@@ -862,6 +1015,29 @@ function validate(){
   }
   if(srcs.length && !doors.length) add("warn","§4.4","Sembol kaynağı var ama bölgede sembol-kapı yok.",{t:"marker",id:srcs[0].id});
 
+  /* --- Sembol-kapı GERÇEK bir geçit mi? (§4.4 kritik yoldaki tek zorunlu bulmaca)
+         Etrafından dolaşılabilen kapı bölge geçişi değil, dekordur. Kapıyı geçici
+         olarak duvar yapıp iki tarafın hâlâ bağlı olup olmadığına bakarız. */
+  for(const d of doors){
+    const de=edgeById(d.edge); if(!de) continue;
+    const [A,B]=edgeCells(de); if(!A||!B) continue;
+    const keep=de.state; de.state="wall";
+    const g=buildGraph();
+    const bypass = reachableFrom(A.id, g.adj).has(B.id);
+    de.state=keep;
+    if(bypass)
+      add("err","§4.4","<b>Sembol-kapı bypass edilebilir</b> ("+A.x+","+A.y+" ↔ "+B.x+","+B.y+"): kapı kapalıyken bile iki taraf birbirine bağlı. §4.4 sembol-kapıyı kritik yoldaki <b>tek zorunlu bulmaca</b> yapar — etrafından dolaşılan kapı bölge geçişi değil dekordur.",{t:"edge",id:de.id});
+  }
+
+  /* --- zincir sırası: kaynak kapıdan ÖNCE gelmeli (anahtar kafada taşınır) --- */
+  if(M.cp.ok && !M.cp.auto){
+    const order=M.cp.waypoints.map(w=>w.m);
+    const di=order.findIndex(m=>m.type==="sembol_kapi");
+    const si=order.findIndex(m=>m.type==="sembol_kaynak");
+    if(di>=0 && si>=0 && si>di)
+      add("warn","§4.4","Kritik yol zincirinde <b>sembol kapısı kaynaktan önce</b> geliyor. Envanter yok, anahtar oyuncunun kafasında taşınır — sembolü görmeden kapıya varmak çıkmaz sokaktır.",null);
+  }
+
   /* --- Lynch §7.1 --- */
   const lr=M.loopRatio;
   if(M.scopeTotal>20 && Math.abs(lr-LYNCH.loopTarget)>LYNCH.loopTol)
@@ -875,13 +1051,22 @@ function validate(){
     n=>"<b>"+n+" ayırt edici öğesiz koridor</b> 60 sn tavanını aşıyor — landmark/işaret/oda ekle. Tıkla: sıradakine git.",
     M.badRuns.map(r=>({t:"cell",id:r.cells[0].id})));
 
-  /* --- kritik yol süresi §7.3 --- */
+  /* --- kritik yol bütünlüğü ve süresi §7.3 --- */
+  for(const id of (M.cp.dangling||[]))
+    add("err","§7.3","Kritik yol zincirinde <b>çözülemeyen durak</b> (<code>"+esc(id)+"</code>) — marker silinmiş ya da geçilemez hücrede. <b>Süre tahmini bu durak olmadan hesaplandı, yani olduğundan kısa.</b> Duraklar panelinden çıkar ya da marker'ı geri koy.",null);
   if(M.cp.err) add("warn","§7.3","Kritik yol hesaplanamadı: "+esc(M.cp.err),null);
   else{
-    const t=doc.meta.criticalPathTargetMin, v=M.cp.totalMin;
+    const t=doc.meta.criticalPathTargetMin, v=M.cp.budgetMin;
     if(t>0 && Math.abs(v-t)/t > LYNCH.pathTolMin)
-      add(v<t?"warn":"info","§7.3","Kritik yol tahmini <b>"+v.toFixed(1)+" dk</b>, bölge bütçesi "+t+" dk"+(v<t?" — <b>bütçenin altında</b>. Süre kesilemez (min 2 saat kuralı).":" — bütçenin üstünde."),null);
+      add(v<t?"warn":"info","§7.3","Kritik yol <b>"+v.toFixed(1)+" dk</b> (yürüme+duraklama), bölge bütçesi "+t+" dk"+
+        (v<t?" — <b>bütçenin altında</b>. Süre kesilemez (min 2 saat kuralı); kaybolma payı bu açığı KAPATMAZ, §7.3 onu bütçenin üstüne koyar.":" — bütçenin üstünde."),null);
+    if(M.cp.repeatRatio > LYNCH.repeatMax)
+      add("warn","§7.3","Kritik yolun <b>%"+(M.cp.repeatRatio*100).toFixed(0)+"'i tekrar yürüme</b> ("+(M.cp.cells.length-1)+" adım / "+M.cp.uniqueCells+" benzersiz hücre). GDD §7.3: <b>\"Süreyi doldurmak için backtracking eklemek YASAKTIR.\"</b> Bütçe zikzakla değil durak/duraklama/taban alanıyla tutturulur.",null);
+    if(M.cp.worstKirikMin > 12)
+      add("info","§6.2","Kırık'sız en uzun kritik yol parçası ≈ "+M.cp.worstKirikMin.toFixed(1)+" dk. Soft-fail oyuncuyu son Kırık'a döndürür (§6.1) — bu aralık ceza acısını belirler.",null);
   }
+  for(const c of (M.oneWayTraps||[]).slice(0,1))
+    add("warn","§7.1-4",(M.oneWayTraps.length)+" hücreden <b>başlangıca geri dönülemiyor</b> (tek yön kapısı tuzağı). Kısayollar geri yürüme angaryasını kesmek içindir, oyuncuyu kilitlemek için değil.",{t:"cell",id:c.id});
 
   /* --- bölgeye özel canon (§7.3 tablosu) --- */
   if(P){
@@ -907,15 +1092,107 @@ function validate(){
       const kc=cellById(k.cell); if(!kc) continue;
       const dm=Math.hypot(wc.x-kc.x,wc.y-kc.y)*doc.meta.cellSize;
       if(dm<LYNCH.kirikSafeM)
-        add("warn","§6.2","Watcher spawn'ı Kırık'a "+dm.toFixed(1)+" m — Kırık dinlenme odasıdır (aydınlık, sissiz). ≥"+LYNCH.kirikSafeM+" m olmalı.",{t:"marker",id:w.id});
+        add("warn","§6.2*","Watcher spawn'ı Kırık'a "+dm.toFixed(1)+" m — Kırık dinlenme odasıdır (aydınlık, sissiz). <i>Araç eklentisi: mesafe eşiği onay bekliyor.</i>",{t:"marker",id:w.id});
     }
     if(M.cp.ok && M.cp.cells.length){
       let best=1e9;
       for(const cid of M.cp.cells){ const pc=cellById(cid); if(pc) best=Math.min(best, Math.hypot(wc.x-pc.x,wc.y-pc.y)*doc.meta.cellSize); }
+      // §5.1c: spawn SİS SINIRINDA olur — bandın hem altı hem üstü hatalı.
       if(best>doc.meta.fogMax)
-        add("warn","§5.1c","Watcher spawn'ı kritik yoldan "+best.toFixed(0)+" m — sis bandı ("+doc.meta.fogMin+"–"+doc.meta.fogMax+" m) dışında, hiç görülmeyebilir.",{t:"marker",id:w.id});
+        add("warn","§5.1c","Watcher spawn'ı kritik yoldan "+best.toFixed(0)+" m — sis bandının (<b>"+doc.meta.fogMin+"–"+doc.meta.fogMax+" m</b>) ÜSTÜNDE, hiç görülmeyebilir.",{t:"marker",id:w.id});
+      else if(best<doc.meta.fogMin)
+        add("warn","§5.1c","Watcher spawn'ı kritik yola "+best.toFixed(0)+" m — sis bandının <b>ALTINDA</b>. §5.1c spawn'ı sis sınırına koyar; bu kadar yakını jumpscare'e kayar (değişmez kural: jumpscare YOK).",{t:"marker",id:w.id});
     }
   }
+
+  /* --- Çizer yuvası kavşakta olmalı (§5.2: "yanlış KAVŞAKTA" kopya) --- */
+  for(const z of cizers){
+    const zc=cellById(z.cell); if(!zc || !M.deg) continue;
+    const d=M.deg.get(zc.id)||0;
+    if(d<=1) add("warn","§5.2","Çizer yuvası ölü uçta ("+zc.x+","+zc.y+"). P1/P2 sahte işareti <b>kavşakta</b> anlam taşır — ölü uçta yanlış yön diye bir şey yoktur.",{t:"marker",id:z.id});
+  }
+
+  /* --- is lekesi ipucu kapıya yakın olmalı (§4.4/§4.6 "yakındaki scripted is lekesi") --- */
+  for(const ip of ix.markByType.get("is_lekesi_ipucu")||[]){
+    const ic=cellById(ip.cell); if(!ic || !doors.length) continue;
+    let best=1e9, bestDoor=null;
+    for(const d of doors){ const de=edgeById(d.edge); if(!de) continue;
+      const dc=cellById(de.a); if(!dc) continue;
+      const p=bfsPath(ic.id, dc.id);
+      if(p && p.length-1<best){ best=p.length-1; bestDoor=d; } }
+    if(bestDoor && best>LYNCH.ipucuMaxCells)
+      add("warn","§4.4","İs lekesi ipucu sembol-kapıdan "+best+" hücre ("+(best*doc.meta.cellSize).toFixed(0)+" m) uzakta. §4.4 ipucunu kapının <b>yakınına</b> koyar (N=3 denemeden sonra belirir).",{t:"marker",id:ip.id});
+  }
+
+  /* --- belge: §8.1/§8.4 belgeler KIRIKLARDA bulunur --- */
+  for(const bl of ix.markByType.get("belge")||[]){
+    const tur=(bl.props||{}).tur||"";
+    const bc=cellById(bl.cell); if(!bc) continue;
+    if(tur==="grafiti") continue;                    // grafiti duvar katmanıdır (§8.2), Kırık'a bağlı değil
+    let near=false;
+    for(const k of kiriks){ const kc=cellById(k.cell); if(!kc) continue;
+      if(Math.hypot(bc.x-kc.x,bc.y-kc.y)<=1.5) { near=true; break; } }
+    if(!near) add("err","§8.1","<b>"+esc(tur||"belge")+"</b> tipi belge Kırık'ta değil ("+bc.x+","+bc.y+"). §8.1: belge = <b>Kırık'lardaki kâğıtlar</b>; §8.4 üç ana belgeyi Kırık'lara bağlar. Duvar yazısı istiyorsan <code>tur: grafiti</code> kullan.",{t:"marker",id:bl.id});
+  }
+
+  /* --- anomali yarıçapı geçerli olmalı (NaN/0 sabotaj denetimini sessizce kapatıyordu) --- */
+  for(const a of anoms){
+    const r=(a.props||{}).radius;
+    if(r==null || !Number.isFinite(+r) || +r<=0)
+      add("err","§7.5","Anomali alanının <code>radius</code>'u geçersiz (<code>"+esc(String(r))+"</code>) — <b>§7.5 sabotaj çakışma denetimi bu marker için çalışmıyor.</b>",{t:"marker",id:a.id});
+  }
+
+  /* --- yönelim (SEMA v2): importer rotasyonu veriden okur --- */
+  for(const mk of doc.markers){
+    if(NEEDS_FACE.has(mk.type)){
+      const f=(mk.props||{}).face;
+      const c=cellById(mk.cell);
+      if(!f || !FACE_DIRS.some(d=>d.id===f))
+        add("err","SEMA §6","<b>"+esc(MARKERS[mk.type].label)+"</b> duvara asılır ama <code>face</code> yok/geçersiz. Godot importer her rebuild'de yeniden kurar — yön veride olmak zorunda.",{t:"marker",id:mk.id});
+      else if(c){
+        const d=FACE_DIRS.find(x=>x.id===f);
+        const n=cellAt(c.x+d.dx,c.y+d.dy);
+        const e=n?edgeBetween(c.x,c.y,n.x,n.y):null;
+        if(n && isPass(n) && edgeOpen(e))
+          add("warn","SEMA §6","<b>"+esc(MARKERS[mk.type].label)+"</b> <code>face:"+f+"</code> yönünde duvar yok — işaret boşluğa asılı kalır.",{t:"marker",id:mk.id});
+      }
+    }
+    if(NEEDS_YAW.has(mk.type) && !Number.isFinite(+(mk.props||{}).yaw))
+      add("err","SEMA §6","<b>"+esc(MARKERS[mk.type].label)+"</b> için <code>yaw</code> yok/geçersiz (bakış yönü).",{t:"marker",id:mk.id});
+  }
+
+  /* --- meta değerleri makul mü --- */
+  if(!(doc.meta.cellSize>0)) add("err","ŞEMA","<code>cellSize</code> ≤ 0 (<code>"+esc(String(doc.meta.cellSize))+"</code>) — tüm mesafe ve süre ölçümleri geçersiz.",null);
+  if(!(doc.meta.walkSpeed>0)) add("err","ŞEMA","<code>walkSpeed</code> ≤ 0 — süre ölçümleri geçersiz.",null);
+  if(doc.meta.explorationFactor>LYNCH.exploreMax)
+    add("warn","§7.3","Kaybolma payı ×"+doc.meta.explorationFactor+" — GDD §7.3 payı bütçenin ÜSTÜNE koyar, çarpan <b>1.0–1.2</b> bandında tutulur. (Bütçe kıyası zaten paysız yapılıyor; bu sayı yalnız medyan tahminini şişirir.)",null);
+  if(!(doc.meta.fogMin>=40 && doc.meta.fogMax<=80 && doc.meta.fogMin<doc.meta.fogMax))
+    add("warn","§9.3","Sis bandı "+doc.meta.fogMin+"–"+doc.meta.fogMax+" m — GDD sabiti <b>40–80 m</b>. Görüş ve Watcher denetimleri bu banda göre ölçer.",null);
+  if(!(doc.meta.criticalPathTargetMin>0))
+    add("warn","§7.3","Bölge süre bütçesi 0 — §7.3 süre denetimi tamamen kapalı.",null);
+
+  {
+    const drafts=M.deadEnds.filter(c=>payoffClass(c.payoff) && !payoffDetail(c.payoff));
+    addMany("info","§7.1-3",
+      i=>"Ödeme sınıfı atanmış ama metni yazılmamış ("+drafts[i].x+","+drafts[i].y+").",
+      n=>"<b>"+n+" ölü uçta ödeme sınıfı var, metin yok</b> — triyaj tamam, yazım borcu duruyor. Tıkla: sıradakine git.",
+      drafts.map(c=>({t:"cell",id:c.id})));
+    const loose=M.deadEnds.filter(c=>(c.payoff||"").trim() && !payoffClass(c.payoff));
+    addMany("warn","§7.1-3",
+      i=>"Ödeme metni sınıfsız ("+loose[i].x+","+loose[i].y+"): \""+esc((loose[i].payoff||"").slice(0,30))+"\"",
+      n=>"<b>"+n+" ödeme metni sınıfsız.</b> Biçim <code>sınıf: metin</code> olmalı (manzara/grafiti/landmark/enkaz/odul) — sınıfsız metin borcun hangi kanaldan ödendiğini söylemez.",
+      loose.map(c=>({t:"cell",id:c.id})));
+  }
+
+  /* --- yinelenen ödeme metni: "0 ödemeyen ölü uç" kopyala-yapıştırla susturulabiliyor --- */
+  const payMap=new Map();
+  for(const c of doc.cells){ const t=payoffDetail(c.payoff)||((c.payoff||"").trim()); if(!t) continue;
+    if(!payMap.has(t)) payMap.set(t,[]); payMap.get(t).push(c); }
+  const dupes=[...payMap.entries()].filter(([,v])=>v.length>1);
+  addMany("warn","§7.7-3",
+    i=>"Aynı ödeme metni "+dupes[i][1].length+" ölü uçta: \""+esc(dupes[i][0].slice(0,40))+"…\"",
+    n=>"<b>"+n+" ödeme metni tekrar ediyor.</b> §7.7-3 izlenebilir mikro-hikâyeler ister; aynı grafiti iki ölü uçta borcu ödemez. Tıkla: sıradakine git.",
+    dupes.map(([,v])=>({t:"cell",id:v[1].id})));
 
   /* --- bilgi --- */
   const lockedN=doc.cells.filter(x=>x.locked).length;
@@ -931,7 +1208,8 @@ function validate(){
    ========================================================================== */
 const cv=el("cv"); const ctx=cv.getContext("2d");
 const view={z:26, px:40, py:40};
-const VIEW={zone:true, markers:true, path:true, warn:true, locked:true, oneway:true, coords:false, ids:false, opendots:false, kind:true};
+const VIEW={zone:true, markers:true, path:true, warn:true, locked:true, oneway:true,
+            coords:false, ids:false, opendots:false, kind:true, sight:false, debt:false};
 let hover={cell:null, edge:null};
 let sel={t:null, id:null};      // seçim: cell | edge | marker
 let flash={t:null, id:null, until:0};
@@ -962,11 +1240,21 @@ function draw(){
   // --- zemin
   for(let y=y0;y<=y1;y++) for(let x=x0;x<=x1;x++){
     const c=cellAt(x,y); if(!c) continue;
+    // void HİÇBİR zaman zone rengi almaz: alt-bölge boyalı bir void blok, duvarsız
+    // çizildiği için haritanın en büyük avlusu gibi görünüyordu.
     let col = CELL_KINDS[c.kind].color;
-    if(VIEW.zone && c.zone){ const zc=zoneColor(c.zone); if(zc) col=zc; }
+    if(VIEW.zone && c.zone && c.kind!=="void"){ const zc=zoneColor(c.zone); if(zc) col=zc; }
     ctx.fillStyle=col;
     ctx.fillRect(S(x),T(y),z+0.6,z+0.6);
-    if(VIEW.kind && c.kind==="room"){ ctx.fillStyle="#ffffff08"; ctx.fillRect(S(x),T(y),z,z); }
+    if(c.kind==="void"){                       // boşluk: çapraz tarama, mekân değil
+      ctx.save(); ctx.beginPath(); ctx.rect(S(x),T(y),z,z); ctx.clip();
+      ctx.strokeStyle="#ffffff10"; ctx.lineWidth=1; ctx.beginPath();
+      for(let k=-z;k<z;k+=6){ ctx.moveTo(S(x)+k,T(y)); ctx.lineTo(S(x)+k+z,T(y)+z); }
+      ctx.stroke(); ctx.restore();
+    }
+    if(VIEW.kind && c.kind==="room"){          // avlu: görünür ton (eskiden %3 beyaz = görünmez)
+      ctx.fillStyle="#ffffff14"; ctx.fillRect(S(x),T(y),z,z);
+    }
     if(VIEW.kind && c.kind==="manual"){
       ctx.strokeStyle="#d2a8ff66"; ctx.lineWidth=1;
       ctx.beginPath(); ctx.moveTo(S(x)+2,T(y)+2); ctx.lineTo(S(x)+z-2,T(y)+z-2); ctx.stroke();
@@ -977,8 +1265,26 @@ function draw(){
   if(VIEW.warn && M){
     ctx.fillStyle="#f8514922";
     for(const c of M.unreachable) if(c.x>=x0&&c.x<=x1&&c.y>=y0&&c.y<=y1) ctx.fillRect(S(c.x),T(c.y),z,z);
-    ctx.fillStyle="#d2992222";
-    for(const r of M.badRuns) for(const c of r.cells) if(c.x>=x0&&c.x<=x1&&c.y>=y0&&c.y<=y1) ctx.fillRect(S(c.x),T(c.y),z,z);
+    ctx.strokeStyle="#d2992288"; ctx.lineWidth=1; ctx.beginPath();
+    for(const r of M.badRuns) for(const c of r.cells){
+      if(c.x<x0||c.x>x1||c.y<y0||c.y>y1) continue;
+      for(let k=-z;k<z;k+=5){ ctx.moveTo(S(c.x)+k,T(c.y)+z); ctx.lineTo(S(c.x)+k+z,T(c.y)); }
+    }
+    ctx.save(); ctx.beginPath();
+    for(const r of M.badRuns) for(const c of r.cells) ctx.rect(S(c.x),T(c.y),z,z);
+    ctx.clip(); ctx.stroke(); ctx.restore();
+  }
+
+  // --- görüş hattı ısı haritası (§7.1-1 "sis mesafesi içinde", §7.1-5)
+  if(VIEW.sight && M && M.sight){
+    for(let y=y0;y<=y1;y++) for(let x=x0;x<=x1;x++){
+      const c=cellAt(x,y); if(!isPass(c)) continue;
+      const v=M.sight.get(c.id)||0;
+      const f=clamp(v/Math.max(1,doc.meta.fogMax),0,1);
+      if(f<=0.12) continue;
+      ctx.fillStyle="rgba(88,166,255,"+(f*0.42).toFixed(3)+")";
+      ctx.fillRect(S(x),T(y),z,z);
+    }
   }
 
   // --- kilit tarama deseni
@@ -998,11 +1304,42 @@ function draw(){
 
   // --- kritik yol
   if(VIEW.path && M && M.cp && M.cp.ok && M.cp.cells.length>1){
-    ctx.strokeStyle="#58a6ff55"; ctx.lineWidth=Math.max(3,z*0.34);
-    ctx.lineJoin="round"; ctx.lineCap="round"; ctx.beginPath();
-    M.cp.cells.forEach((cid,i)=>{ const c=cellById(cid); if(!c) return;
-      const X=S(c.x)+z/2, Y=T(c.y)+z/2; i?ctx.lineTo(X,Y):ctx.moveTo(X,Y); });
-    ctx.stroke();
+    const cp=M.cp, rep=cp.repeatCells||new Set();
+    ctx.lineJoin="round"; ctx.lineCap="round";
+    // tekrar geçilen segmentler ayrı renkte — §7.3 backtracking yasağı gözle görünsün
+    for(const pass of [0,1]){
+      ctx.strokeStyle = pass ? "#d29922aa" : "#58a6ff55";
+      ctx.lineWidth = pass ? Math.max(2,z*0.16) : Math.max(3,z*0.34);
+      ctx.beginPath();
+      for(let i=1;i<cp.cells.length;i++){
+        const a=cellById(cp.cells[i-1]), b=cellById(cp.cells[i]); if(!a||!b) continue;
+        const isRep = rep.has(cp.cells[i]) && rep.has(cp.cells[i-1]);
+        if(!!pass !== isRep) continue;
+        ctx.moveTo(S(a.x)+z/2,T(a.y)+z/2); ctx.lineTo(S(b.x)+z/2,T(b.y)+z/2);
+      }
+      ctx.stroke();
+    }
+    // yön okları
+    if(z>=14){
+      ctx.fillStyle="#58a6ffcc";
+      for(let i=6;i<cp.cells.length;i+=8){
+        const a=cellById(cp.cells[i-1]), b=cellById(cp.cells[i]); if(!a||!b) continue;
+        const ax=S(a.x)+z/2, ay=T(a.y)+z/2, bx=S(b.x)+z/2, by=T(b.y)+z/2;
+        const ang=Math.atan2(by-ay,bx-ax), sz=Math.max(3,z*0.15);
+        ctx.save(); ctx.translate((ax+bx)/2,(ay+by)/2); ctx.rotate(ang);
+        ctx.beginPath(); ctx.moveTo(sz,0); ctx.lineTo(-sz*0.7,sz*0.6); ctx.lineTo(-sz*0.7,-sz*0.6);
+        ctx.closePath(); ctx.fill(); ctx.restore();
+      }
+    }
+    // durak sıra rozetleri
+    if(z>=16) cp.waypoints.forEach((w,i)=>{
+      const c=w.c; if(!c) return;
+      const X=S(c.x)+z/2, Y=T(c.y)+z/2, R=Math.max(6,z*0.19);
+      ctx.beginPath(); ctx.arc(X-z*0.30,Y-z*0.30,R,0,7);
+      ctx.fillStyle="#0d1117dd"; ctx.fill(); ctx.strokeStyle="#58a6ff"; ctx.lineWidth=1.2; ctx.stroke();
+      ctx.fillStyle="#58a6ff"; ctx.font="700 "+Math.round(R*1.2)+"px ui-monospace,monospace";
+      ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(String(i+1),X-z*0.30,Y-z*0.30+0.5);
+    });
   }
 
   // --- ızgara ince çizgiler
@@ -1064,7 +1401,7 @@ function draw(){
   }
 
   // --- ödemeyen ölü uç halkaları
-  if(VIEW.warn && M){
+  if(VIEW.debt && M){
     ctx.strokeStyle="#d2992299"; ctx.lineWidth=1.2; ctx.beginPath();
     for(const c of M.unpaid){                       // küçük "borç" işareti — marker'larla karışmasın
       const X=S(c.x)+z/2, Y=T(c.y)+z/2, r=Math.max(2.5,z*0.14);
@@ -1093,6 +1430,18 @@ function draw(){
         ctx.fillStyle="#0d1117"; ctx.font="700 "+Math.round(R*1.25)+"px ui-monospace,monospace";
         ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(def.g,X,Y+0.5);
       }
+      if(z>=18 && NEEDS_FACE.has(m.type) && (m.props||{}).face){
+        const fd=FACE_DIRS.find(f=>f.id===m.props.face);
+        if(fd){ ctx.strokeStyle=def.c; ctx.lineWidth=Math.max(1.5,z*0.07); ctx.beginPath();
+          ctx.moveTo(X+fd.dx*R*0.9, Y+fd.dy*R*0.9);
+          ctx.lineTo(X+fd.dx*z*0.46, Y+fd.dy*z*0.46); ctx.stroke(); }
+      }
+      if(z>=18 && NEEDS_YAW.has(m.type) && Number.isFinite(+(m.props||{}).yaw)){
+        const a=(+m.props.yaw-90)*Math.PI/180;
+        ctx.strokeStyle=def.c; ctx.lineWidth=Math.max(1.5,z*0.07); ctx.beginPath();
+        ctx.moveTo(X+Math.cos(a)*R*0.9, Y+Math.sin(a)*R*0.9);
+        ctx.lineTo(X+Math.cos(a)*z*0.5, Y+Math.sin(a)*z*0.5); ctx.stroke();
+      }
       if(m.type==="cizer_slot" && z>=18 && (m.props||{}).perde){
         ctx.fillStyle="#d2a8ff"; ctx.font="600 9px ui-monospace,monospace"; ctx.textAlign="center";
         ctx.fillText(m.props.perde, X, Y-R-3);
@@ -1112,6 +1461,15 @@ function draw(){
   // --- seçim / flaş / hover
   if(sel.t) outline(sel, "#58a6ff", 2.2);
   if(flash.t && performance.now()<flash.until){ outline(flash, "#f0f6fc", 3); invalidate(); }
+  if(drag && drag.rect && drag.rect.x1!=null){
+    const r=drag.rect;
+    const ax=Math.min(r.x0,r.x1), bx=Math.max(r.x0,r.x1), ay=Math.min(r.y0,r.y1), by=Math.max(r.y0,r.y1);
+    ctx.fillStyle="#58a6ff22"; ctx.strokeStyle="#58a6ff"; ctx.lineWidth=1.5;
+    ctx.fillRect(S(ax),T(ay),(bx-ax+1)*z,(by-ay+1)*z);
+    ctx.strokeRect(S(ax)+0.5,T(ay)+0.5,(bx-ax+1)*z,(by-ay+1)*z);
+    ctx.fillStyle="#e6edf3"; ctx.font="11px ui-monospace,monospace"; ctx.textAlign="left"; ctx.textBaseline="bottom";
+    ctx.fillText((bx-ax+1)+"×"+(by-ay+1), S(ax)+3, T(ay)-3);
+  }
   if(hover.cell && TOOL!=="edge"){ ctx.strokeStyle="#ffffff44"; ctx.lineWidth=1.5;
     ctx.strokeRect(S(hover.cell.x)+1,T(hover.cell.y)+1,z-2,z-2); }
   if(hover.edge && TOOL==="edge"){ const [A,B]=edgeCells(hover.edge);
@@ -1174,14 +1532,15 @@ const TOOLS=[
   {id:"select",label:"Seç",       key:"V", hint:"Hücre / kenar / marker seç ve sağ paneldeki müfettişten düzenle."},
   {id:"edge",  label:"Kenar",     key:"E", hint:"Kenara tıkla: duvar → açık → kapı → duvar. <b>Shift+tık</b>: tek yön (çift ↔ a→b ↔ b→a). Sürükleyerek boya."},
   {id:"marker",label:"Marker",    key:"M", hint:"Sağdaki paletten tip seç, hücreye tıkla. <b>Sağ tık</b>: sil. Sembol-kapı KENARA konur."},
-  {id:"lock",  label:"Kilit",     key:"L", hint:"Sürükleyerek kilitle. <b>Sağ tık</b>: kilidi aç. Kilitli hücreye değen kenar yeniden üretimde dokunulmaz."},
-  {id:"zone",  label:"Alt-bölge", key:"Z", hint:"Seçili alt-bölgeyi hücrelere sür. <b>Sağ tık</b>: temizle."},
-  {id:"kind",  label:"Hücre tipi",key:"K", hint:"Seçili hücre tipini sür. <b>Sağ tık</b>: normal'e döndür."}
+  {id:"lock",  label:"Kilit",     key:"L", hint:"Sürükleyerek kilitle. <b>Sağ tık</b>: kilidi aç. <b>Shift+sürükle</b>: dikdörtgen alan. Kilitli hücreye değen kenar yeniden üretimde dokunulmaz."},
+  {id:"zone",  label:"Alt-bölge", key:"Z", hint:"Seçili alt-bölgeyi hücrelere sür. <b>Sağ tık</b>: temizle. <b>Shift+sürükle</b>: dikdörtgen alan."},
+  {id:"kind",  label:"Hücre tipi",key:"K", hint:"Seçili hücre tipini sür. <b>Sağ tık</b>: normal'e döndür. <b>Shift+sürükle</b>: dikdörtgen alan."},
+  {id:"room",  label:"Oda fırçası",key:"R", hint:"Sürüklediğin dikdörtgeni <b>avluya</b> çevirir: hücreler <i>room</i>, iç kenarların hepsi açık. §9.5'in dar↔geniş kontrastı tek hareketle. <b>Sağ tık</b>: avluyu geri al (normal + iç kenarlar duvar)."}
 ];
 let TOOL="edge";
 let markerType="kirik_checkpoint";
 let zonePick=null;
-let kindPick="void";
+let kindPick="normal";
 
 let undoStack=[], redoStack=[], pendingSnap=null, dirty=false;
 function beginEdit(){ pendingSnap=JSON.stringify(doc); }
@@ -1198,7 +1557,7 @@ function redo(){ if(!redoStack.length) return toast("İleri alınacak adım yok"
 function refreshLight(){ reindex(); invalidate(); }
 function refreshAll(){
   reindex(); computeMetrics(); validate();
-  renderMetrics(); renderIssues(); renderInspector(); renderZones(); renderPath(); syncForms(); updateHeader();
+  renderMetrics(); renderIssues(); renderInspector(); renderZones(); renderPath(); renderDebt(); syncForms(); updateHeader();
   autosave(); invalidate();
 }
 
@@ -1255,8 +1614,11 @@ window.addEventListener("mousemove", ev=>{
   if(drag && drag.mode!=="select") applyTool(p, ev, false);
 });
 window.addEventListener("mouseup", ()=>{
-  if(drag && drag.mode!=="pan") endEdit(drag.changed);
-  drag=null;
+  if(drag && drag.mode!=="pan"){
+    if(drag.rect && finishRect(drag)) drag.changed=true;
+    endEdit(drag.changed);
+  }
+  drag=null; invalidate();
 });
 cv.addEventListener("wheel", ev=>{
   ev.preventDefault();
@@ -1284,12 +1646,21 @@ function applyTool(p, ev, isDown){
       if(!e || d.seen.has(e.id)) return;
       d.seen.add(e.id);
       if(isDown && ev.shiftKey){
+        // tek yön yalnız GEÇİLEBİLİR kenarda anlamlı (duvarda `dir` çöp veri bırakıyordu)
+        if(e.state==="wall"){ toast("Tek yön için önce kenarı aç","err"); return; }
         e.dir = e.dir==="both" ? "ab" : e.dir==="ab" ? "ba" : "both";
       } else if(isDown){
         d.paint = d.right ? "wall" : (e.state==="wall" ? "open" : e.state==="open" ? "door" : "wall");
         e.state=d.paint; if(e.state==="wall") e.dir="both";
+        d.firstEdge = (d.paint==="door") ? e : null;
       } else {
-        e.state = d.paint!=null ? d.paint : (d.right?"wall":"open");
+        // Hareket başladı → bu bir BOYAMA hareketi. İlk kenar tıklama semantiğiyle
+        // kapıya dönmüşse geri al; kapı bilinçli tek tıklama işidir.
+        if(d.firstEdge){ d.firstEdge.state="open"; d.firstEdge.dir="both"; d.firstEdge=null;
+                         if(d.paint==="door") d.paint="open"; }
+        // SÜRÜKLEME asla kapı üretmez: `door` semantik olarak yüklüdür (§4.4 sembol
+        // kilidi + importer kapı çerçevesi/occluder'ı), bilinçli tek tıklama işidir.
+        e.state = (d.paint==="wall") ? "wall" : "open";
         if(e.state==="wall") e.dir="both";
       }
       d.changed=true; refreshLight(); return;
@@ -1305,43 +1676,87 @@ function applyTool(p, ev, isDown){
       if(def.on==="edge"){
         const e=pickEdge(p, 0.45); if(!e) return toast("Kenara daha yakın tıkla","err");
         if(e.state!=="door") e.state="door";
-        doc.markers.push({id:newId("m"), type:markerType, cell:null, edge:e.id, label:"", props:defaultProps(markerType)});
+        doc.markers.push({id:newId("m"), type:markerType, cell:null, edge:e.id, label:"", props:defaultProps(markerType, cellById(e.a))});
       }else{
         const c=pickCell(p); if(!c) return;
         if(!isPass(c)) return toast("Geçilemez hücreye marker konmaz","err");
         if(def.unique) doc.markers=doc.markers.filter(m=>m.type!==markerType);
-        doc.markers.push({id:newId("m"), type:markerType, cell:c.id, edge:null, label:"", props:defaultProps(markerType)});
+        doc.markers.push({id:newId("m"), type:markerType, cell:c.id, edge:null, label:"", props:defaultProps(markerType, c)});
       }
       d.changed=true; sel={t:"marker",id:doc.markers[doc.markers.length-1].id};
       refreshLight(); renderInspector(); return;
     }
-    case "lock": {
+    case "lock": case "zone": case "kind": {
+      if(isDown && ev.shiftKey){ d.rect={x0:Math.floor(gX(p.x)),y0:Math.floor(gY(p.y))}; }
+      if(d.rect){ d.rect.x1=Math.floor(gX(p.x)); d.rect.y1=Math.floor(gY(p.y)); invalidate(); return; }
       const c=pickCell(p); if(!c||d.seen.has(c.id)) return;
-      d.seen.add(c.id); const v=!d.right;
-      if(c.locked!==v){ c.locked=v; d.changed=true; invalidate(); }
+      d.seen.add(c.id);
+      if(paintCell(c, d.mode, d.right)){ d.changed=true; d.mode==="kind"?refreshLight():invalidate(); }
       return;
     }
-    case "zone": {
-      const c=pickCell(p); if(!c||d.seen.has(c.id)) return;
-      d.seen.add(c.id); const v=d.right?"":(zonePick||"");
-      if(c.zone!==v){ c.zone=v; d.changed=true; invalidate(); }
-      return;
-    }
-    case "kind": {
-      const c=pickCell(p); if(!c||d.seen.has(c.id)) return;
-      d.seen.add(c.id); const v=d.right?"normal":kindPick;
-      if(c.kind!==v){ c.kind=v; d.changed=true; refreshLight(); }
+    case "room": {
+      if(isDown) d.rect={x0:Math.floor(gX(p.x)),y0:Math.floor(gY(p.y))};
+      if(d.rect){ d.rect.x1=Math.floor(gX(p.x)); d.rect.y1=Math.floor(gY(p.y)); invalidate(); }
       return;
     }
   }
 }
-function defaultProps(t){
-  if(t==="sembol_kapi")   return {symbolId:"sym_1"};
-  if(t==="sembol_kaynak") return {symbolId:"sym_1"};
-  if(t==="cizer_slot")    return {perde:(ZONE_PRESETS[doc.meta.zoneId]||{}).perde||"p1"};
-  if(t==="belge")         return {tur:"tutanak"};
-  if(t==="anomali_alani") return {radius:2};
-  return {};
+function paintCell(c, mode, right){
+  if(mode==="lock"){ const v=!right; if(c.locked===v) return false; c.locked=v; return true; }
+  if(mode==="zone"){ const v=right?"":(zonePick||""); if(c.zone===v) return false; c.zone=v; return true; }
+  if(mode==="kind"){ const v=right?"normal":kindPick; if(c.kind===v) return false; c.kind=v; return true; }
+  return false;
+}
+function rectCells(r){
+  const out=[];
+  const ax=Math.min(r.x0,r.x1), bx=Math.max(r.x0,r.x1);
+  const ay=Math.min(r.y0,r.y1), by=Math.max(r.y0,r.y1);
+  for(let y=ay;y<=by;y++) for(let x=ax;x<=bx;x++){ const c=cellAt(x,y); if(c) out.push(c); }
+  return out;
+}
+/* Oda fırçası (§9.5 "dar servis koridorundan katedral avluya"): tek sürüklemede
+   hücreleri room yapar VE iç kenarların hepsini açar. Etiket boyamak yetmiyordu —
+   avlu asıl olarak KENAR durumudur. */
+function applyRoom(r, remove){
+  const cells=rectCells(r); if(!cells.length) return false;
+  const set=new Set(cells.map(c=>c.id));
+  for(const c of cells) c.kind = remove ? "normal" : "room";
+  for(const c of cells) for(const n of neighbors(c)){
+    if(!set.has(n.id)) continue;
+    const e=edgeBetween(c.x,c.y,n.x,n.y);
+    if(!e || e.state==="door") continue;               // kapıya dokunma
+    e.state = remove ? "wall" : "open"; e.dir="both";
+  }
+  return true;
+}
+function finishRect(d){
+  if(!d.rect || d.rect.x1==null) return false;
+  if(d.mode==="room") return applyRoom(d.rect, d.right);
+  let ch=false;
+  for(const c of rectCells(d.rect)) if(paintCell(c, d.mode, d.right)) ch=true;
+  return ch;
+}
+function defaultProps(t, cell){
+  const p={};
+  if(t==="sembol_kapi")   p.symbolId="sym_1";
+  if(t==="sembol_kaynak") p.symbolId="sym_1";
+  if(t==="cizer_slot")    p.perde=(ZONE_PRESETS[doc.meta.zoneId]||{}).perde||"p1";
+  if(t==="belge")         p.tur="tutanak";
+  if(t==="anomali_alani") p.radius=2;
+  if(NEEDS_FACE.has(t))   p.face=guessFace(cell);
+  if(NEEDS_YAW.has(t))    p.yaw=0;
+  return p;
+}
+/* Duvara asılan marker için makul bir yüz tahmin et: hücrenin KAPALI kenarlarından
+   biri. Tahmin, tasarımcının her marker için elle yön seçmesini gereksiz kılar. */
+function guessFace(c){
+  if(!c) return "n";
+  for(const f of FACE_DIRS){
+    const n=cellAt(c.x+f.dx,c.y+f.dy);
+    const e=n?edgeBetween(c.x,c.y,n.x,n.y):null;
+    if(!n || !isPass(n) || !edgeOpen(e)) return f.id;   // duvar var → bu yüze asılabilir
+  }
+  return "n";
 }
 function updateHud(p){
   const fx=gX(p.x), fy=gY(p.y), cx=Math.floor(fx), cy=Math.floor(fy);
@@ -1411,7 +1826,9 @@ function buildMarkerPalette(){
     const d=MARKERS[t];
     const it=document.createElement("div");
     it.className="it"+(t===markerType?" on":"");
-    it.innerHTML='<span class="dot" style="background:'+d.c+'"></span><span class="nm">'+esc(d.label)+'</span><span class="ct" id="mc_'+t+'"></span>';
+    it.innerHTML='<span class="dot" style="background:'+d.c+'"></span>'+
+      '<span style="width:12px;text-align:center;font-weight:700;color:'+d.c+'">'+esc(d.g)+'</span>'+
+      '<span class="nm">'+esc(d.label)+'</span><span class="ct" id="mc_'+t+'"></span>';
     it.onclick=()=>{ markerType=t; setTool("marker"); buildMarkerPalette(); el("markerHint").innerHTML=esc(d.hint); };
     box.appendChild(it);
   }
@@ -1457,45 +1874,136 @@ function renderPath(){
     box.appendChild(it);
   });
 }
+/* GDD §7.1-3 "her ölü uç ödemelidir" borcunu toplu yönetir. Ölçülen iş akışında
+   ödeme başına 3 eylem × ~80 ölü uç = bölge başına ~240 eylem çıkıyordu; sınıf
+   ataması toplu yapılıp metin sonra yazılabilsin diye triyaj ayrıldı. */
+function renderDebt(){
+  const box=el("debtBody"); if(!box) return;
+  const dead=(M&&M.deadEnds)||[];
+  const unpaid=(M&&M.unpaid)||[];
+  const draft=dead.filter(c=>payoffClass(c.payoff) && !payoffDetail(c.payoff));
+  const done =dead.filter(c=>{
+    if(payoffClass(c.payoff)) return !!payoffDetail(c.payoff);
+    return (c.payoff||"").trim() || ((ix.markByCell.get(c.id)||[]).some(m=>MARKERS[m.type]&&MARKERS[m.type].reward));
+  });
+  let h='<div class="bar">'+
+    '<i style="width:'+(dead.length?done.length/dead.length*100:0)+'%;background:#3fb950"></i>'+
+    '<i style="width:'+(dead.length?draft.length/dead.length*100:0)+'%;background:#d29922"></i>'+
+    '<i style="flex:1;background:#f85149"></i></div>';
+  h+='<div class="metric"><span class="lb">Ödenmiş</span><span class="vl ok">'+done.length+'</span><span class="tg">/ '+dead.length+'</span></div>';
+  h+='<div class="metric"><span class="lb">Sınıf atanmış (metin yok)</span><span class="vl warn">'+draft.length+'</span></div>';
+  h+='<div class="metric"><span class="lb">Hiç dokunulmamış</span><span class="vl '+(unpaid.length?"err":"ok")+'">'+unpaid.length+'</span></div>';
+  h+='<p class="hint" style="margin-top:8px">Ödenmemiş <b>'+unpaid.length+'</b> ölü uca tek hamlede sınıf ata; metni sonra tek tek yaz. Tıkla → sıradaki ödenmemişe git.</p>';
+  h+='<div class="btns" style="flex-direction:column;gap:4px">'+
+    PAYOFF_CLASSES.map(c=>'<button data-pc="'+c.id+'" title="'+esc(c.hint)+'">'+esc(c.label)+' ('+unpaid.length+')</button>').join("")+'</div>';
+  h+='<div class="btns" style="margin-top:6px"><button id="bDebtNext">Sıradaki ödenmemiş →</button></div>';
+  box.innerHTML=h;
+  box.querySelectorAll("[data-pc]").forEach(b=>b.onclick=()=>{
+    if(!unpaid.length) return toast("Ödenmemiş ölü uç yok","ok");
+    beginEdit();
+    for(const c of unpaid) c.payoff = b.dataset.pc+": ";
+    endEdit(true);
+    toast(unpaid.length+" ölü uca \""+b.dataset.pc+"\" sınıfı atandı — metinleri müfettişten yaz","ok");
+  });
+  let k=0;
+  el("bDebtNext").onclick=()=>{
+    const pend=[...unpaid, ...draft];
+    if(!pend.length) return toast("Borç yok — tüm ölü uçlar ödendi","ok");
+    focusOn({t:"cell",id:pend[k%pend.length].id}); k++;
+  };
+}
 function pct(v){ return (v*100).toFixed(0)+"%"; }
 function cls(ok,warn){ return ok?"ok":(warn?"warn":"err"); }
 function renderMetrics(){
   const m=M, meta=doc.meta;
   const lrOK=Math.abs(m.loopRatio-LYNCH.loopTarget)<=LYNCH.loopTol;
   const cp=m.cp, tgt=meta.criticalPathTargetMin;
-  const cpOK = cp.ok && tgt>0 && Math.abs(cp.totalMin-tgt)/tgt<=LYNCH.pathTolMin;
-  const cpLow = cp.ok && cp.totalMin < tgt;
+  const cpOK = cp.ok && tgt>0 && Math.abs(cp.budgetMin-tgt)/tgt<=LYNCH.pathTolMin;
   let h="";
   h+='<div class="bar"><i style="width:'+pct(m.loopRatio)+';background:#3fb950"></i><i style="flex:1;background:#d29922"></i></div>';
   h+=row("Döngü oranı", pct(m.loopRatio), "hedef %70±5", cls(lrOK, true));
-  h+=row("Dal / ölü uç oranı", pct(m.branchRatio), "hedef %30", cls(lrOK,true));
-  h+=row("Ölü uç sayısı", m.deadEnds.length, "hücrelerin %"+(m.deadEnds.length/Math.max(1,m.scopeTotal)*100).toFixed(1), "");
+  h+=row("Dal oranı (1−döngü)", pct(m.branchRatio), "hedef %30", cls(lrOK,true));
+  h+=row("Ölü uç hücre", m.deadEnds.length, "%"+(m.deadEnds.length/Math.max(1,m.scopeTotal)*100).toFixed(1)+" hücre", "");
   h+=row("↳ ödemeyen", m.unpaid.length, "0 olmalı", m.unpaid.length?"warn":"ok");
-  h+=row("60 sn ihlali", m.badRuns.length, "özelliksiz koridor", m.badRuns.length?"warn":"ok");
-  h+=row("Erişilemeyen hücre", m.unreachable.length, "0 olmalı", m.unreachable.length?"err":"ok");
+  h+=row("60 sn ihlali", m.badRuns.length, "öğeler arası boşluk", m.badRuns.length?"warn":"ok");
+  // Erişilemeyen: başlangıç yoksa SAHTE YEŞİL gösterme
+  h+= m.hasStart
+    ? row("Erişilemeyen hücre", m.unreachable.length, "0 olmalı", m.unreachable.length?"err":"ok")
+    : row("Erişilemeyen hücre", "—", "başlangıç marker'ı yok", "warn");
   h+='<div class="sep"></div>';
+
+  // --- Lynch katman 1/2: görüş hattı (§7.1-1 "sis mesafesi içinde", §7.1-5)
+  const jn=m.junctions.length;
+  const fogPct = jn ? m.fogOK/jn : 0;
+  h+=row("Kavşak (derece ≥3)", jn, "d1:"+m.degHist[1]+" d2:"+m.degHist[2]+" d3:"+m.degHist[3]+" d4:"+m.degHist[4], "");
+  h+=row("↳ sis içinde görüşü olan", jn?pct(fogPct):"—", "≥"+meta.fogMin+" m düz görüş", jn? (fogPct>=0.3?"ok":"warn") : "");
+  h+='<div class="sep"></div>';
+
   if(cp.ok){
-    const mode=Array.isArray(meta.criticalPath)&&meta.criticalPath.length?"elle "+cp.waypoints.length+" durak":"otomatik (alt sınır)";
-    h+=row("Kritik yol", cp.cells.length-1+" hücre", (cp.cells.length-1)*meta.cellSize+" m","");
-    h+=row("↳ zincir", mode, "", "");
-    h+=row("↳ yürüme", cp.walkMin.toFixed(1)+" dk","","");
-    h+=row("↳ kaybolma payı ×"+meta.explorationFactor, cp.exploreMin.toFixed(1)+" dk","","");
-    h+=row("↳ duraklama", cp.dwellMin.toFixed(1)+" dk","yoldaki marker'lar","");
-    h+=row("<b>Tahmini süre</b>", cp.totalMin.toFixed(1)+" dk", "bütçe "+tgt+" dk", cpOK?"ok":(cpLow?"warn":"warn"));
+    h+=row("Kritik yol", (cp.cells.length-1)+" adım", ((cp.cells.length-1)*meta.cellSize).toFixed(0)+" m", "");
+    h+=row("↳ zincir", cp.auto?"otomatik (alt sınır)":("elle "+cp.waypoints.length+" durak"), "", cp.auto?"warn":"");
+    h+=row("↳ tekrar yürüme", pct(cp.repeatRatio), "tavan %"+(LYNCH.repeatMax*100)+" (§7.3)", cp.repeatRatio>LYNCH.repeatMax?"warn":"ok");
+    h+=row("Yürüme", cp.walkMin.toFixed(1)+" dk", "", "");
+    h+=row("Duraklama", cp.dwellMin.toFixed(1)+" dk", "yoldaki marker'lar", "");
+    h+=row("<b>Bütçe kıyası</b>", "<b>"+cp.budgetMin.toFixed(1)+" dk</b>", "hedef "+tgt+" dk", cpOK?"ok":"warn");
+    h+=row("Beklenen medyan", cp.medianMin.toFixed(1)+" dk", "kaybolma payı ×"+meta.explorationFactor+" — §7.3: bütçe ÜSTÜ", "");
+    h+=row("En uzun Kırık'sız", cp.worstKirikMin.toFixed(1)+" dk", "soft-fail dönüş aralığı", "");
+    // walkSpeed duyarlılığı — aracın en riskli varsayımı görünür olsun
+    const sens=[1.2,1.4,1.8,2.2].map(v=>{
+      const w=(cp.cells.length-1)*meta.cellSize/v/60;
+      return v.toFixed(1)+"→"+(w+cp.dwellMin).toFixed(0);
+    }).join("  ");
+    h+='<p class="hint" style="margin-top:5px">Hız duyarlılığı (m/s→dk): <b>'+sens+'</b><br>'+
+       '⚠ <code>walkSpeed</code> henüz oyuncu controller\'ından doğrulanmadı (GDD §7.2). Controller 1.8\'e oturursa bu bölge <b>'+
+       (((cp.cells.length-1)*meta.cellSize/1.8/60)+cp.dwellMin).toFixed(1)+' dk</b> olur.</p>';
   } else {
     h+='<p class="hint" style="color:var(--warn)">Kritik yol yok: '+esc(cp.err||"durak eksik")+'</p>';
   }
   h+='<div class="sep"></div>';
   h+=row("Geçilebilir hücre", m.passTotal, meta.gridW+"×"+meta.gridH, "");
   h+=row("Açık kenar / kapı", m.openEdges+" / "+m.doors, "", "");
-  h+=row("Tek yön kısayol", m.oneWays, "§7.1-4", "");
+  h+=row("Tek yön kısayol", m.oneWays, m.oneWayTraps.length? m.oneWayTraps.length+" tuzak hücre":"§7.1-4", m.oneWayTraps.length?"warn":"");
   h+=row("Dünya ölçüsü", (meta.gridW*meta.cellSize)+"×"+(meta.gridH*meta.cellSize)+" m", "cellSize "+meta.cellSize+" m", "");
   el("metrics").innerHTML=h;
-  buildMarkerPalette();
+  buildMarkerPalette(); renderTempo();
   function row(lb,vl,tg,c){
     return '<div class="metric"><span class="lb">'+lb+'</span><span class="vl '+c+'">'+vl+'</span>'+
            (tg?'<span class="tg">'+esc(tg)+'</span>':'')+'</div>';
   }
+}
+
+/* §7.7-2 "Çizer yoğunluk eğrisi = tempo vanası" + §7.7-5 "araç güven ritmi çizelgesi".
+   GDD sarkan orta bölümün yeni içerikle DEĞİL yerleşim yoğunluğu ayarıyla
+   düzeltileceğini söylüyor — yani bu bir araç işi. Marker'ları kritik yol üzerinde
+   %0–100 ekseninde dizer; boşluklar gözle görünür olur. */
+function renderTempo(){
+  const box=el("tempoBody"); if(!box) return;
+  const cp=M.cp;
+  if(!cp.ok){ box.innerHTML='<p class="hint">Kritik yol kurulmadan tempo ölçülemez.</p>'; return; }
+  const pos=new Map();
+  cp.cells.forEach((id,i)=>{ if(!pos.has(id)) pos.set(id, i/(cp.cells.length-1)); });
+  const TRACKS=[["cizer_slot","Çizer"],["watcher_spawn","Watcher"],["anomali_alani","Anomali"],
+                ["kirik_checkpoint","Kırık"],["ruh_carpismasi","Ruh"],["belge","Belge"]];
+  let h='<p class="hint" style="margin:0 0 7px">Kritik yol boyunca yerleşim (%0 = başlangıç, %100 = kapı). Boşluk = sarkan bölüm.</p>';
+  for(const [t,label] of TRACKS){
+    const ms=(ix.markByType.get(t)||[]);
+    const hits=[];
+    for(const mk of ms){
+      let cid=mk.cell;
+      if(!cid && mk.edge){ const e=edgeById(mk.edge); if(e) cid=pos.has(e.a)?e.a:e.b; }
+      if(cid!=null && pos.has(cid)) hits.push(pos.get(cid));
+    }
+    hits.sort((a,b)=>a-b);
+    h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'+
+       '<span style="width:52px;font-size:10px;color:var(--fg2)">'+esc(label)+'</span>'+
+       '<div style="position:relative;flex:1;height:12px;background:var(--bg3);border:1px solid var(--line);border-radius:3px">'+
+       hits.map(f=>'<i style="position:absolute;left:'+(f*100).toFixed(1)+'%;top:1px;width:3px;height:8px;background:'+
+                   MARKERS[t].c+';border-radius:1px"></i>').join("")+
+       '</div><span class="ct" style="width:16px;text-align:right">'+(hits.length||"")+'</span></div>';
+  }
+  const off=doc.markers.filter(mk=>mk.cell && !pos.has(mk.cell)).length;
+  if(off) h+='<p class="hint">'+off+" marker kritik yol dışında (opsiyonel içerik).</p>";
+  box.innerHTML=h;
 }
 function renderIssues(){
   const box=el("issues"); box.innerHTML="";
@@ -1537,8 +2045,11 @@ function renderInspector(){
        (doc.meta.zones||[]).map(z=>'<option value="'+z.id+'"'+(c.zone===z.id?" selected":"")+'>'+esc(z.name)+'</option>').join("")+'</select></div>';
     h+='<label class="chk"><input type="checkbox" data-f="locked"'+(c.locked?" checked":"")+'> Kilitli (yeniden üretimden korumalı)</label>';
     h+='<div class="row" style="margin-top:6px"><label>Ödeme</label></div>';
-    h+='<input type="text" data-f="payoff" value="'+esc(c.payoff)+'" placeholder="manzara / grafiti — ölü uç borcu">';
-    h+='<p class="hint">Ölü uç ödül marker\'ıyla ödenmiyorsa bu alan doldurulmalı (GDD §7.1-3).</p>';
+    h+='<div class="btns" style="margin-bottom:5px">'+PAYOFF_CLASSES.map(pc=>
+        '<button data-pcls="'+pc.id+'" title="'+esc(pc.hint)+'" style="padding:2px 5px;font-size:10px'+
+        (payoffClass(c.payoff)===pc.id?';border-color:var(--acc);color:var(--acc)':'')+'">'+esc(pc.label)+'</button>').join("")+'</div>';
+    h+='<input type="text" data-f="payoff" value="'+esc(c.payoff)+'" placeholder="manzara: devrilmiş kirişin altından avluya bakış">';
+    h+='<p class="hint">Ölü uç ödül marker\'ıyla ödenmiyorsa doldurulmalı (GDD §7.1-3). Biçim <b>sınıf: metin</b>.</p>';
     h+='<div class="row" style="margin-top:6px"><label>Not</label></div><textarea data-f="note">'+esc(c.note)+'</textarea>';
     const ms=ix.markByCell.get(c.id)||[];
     if(ms.length){ h+='<div class="sep"></div><div class="list">'+ms.map(m=>
@@ -1573,11 +2084,19 @@ function renderInspector(){
     if(m.type==="belge")
       h+='<div class="row"><label>tür</label><select data-p="tur" class="grow">'+["tutanak","kronoloji","grafiti"].map(v=>'<option'+(P.tur===v?" selected":"")+'>'+v+'</option>').join("")+'</select></div>';
     if(m.type==="anomali_alani")
-      h+='<div class="row"><label>yarıçap</label><input type="number" data-p="radius" class="grow" step="1" min="0" value="'+(P.radius!=null?P.radius:2)+'"></div>';
+      h+='<div class="row"><label>yarıçap</label><input type="number" data-p="radius" class="grow" step="1" min="1" value="'+(P.radius!=null?P.radius:2)+'"></div>';
+    if(NEEDS_FACE.has(m.type))
+      h+='<div class="row"><label>duvar yüzü</label><select data-p="face" class="grow">'+
+         FACE_DIRS.map(f=>'<option value="'+f.id+'"'+(P.face===f.id?" selected":"")+'>'+esc(f.label)+'</option>').join("")+
+         '</select><button id="bFace" title="En yakın duvara hizala">⟂</button></div>';
+    if(NEEDS_YAW.has(m.type))
+      h+='<div class="row"><label>bakış (°)</label><input type="number" data-p="yaw" class="grow" step="15" min="-180" max="360" value="'+(P.yaw!=null?P.yaw:0)+'"></div>';
     h+='<div class="row"><label>Duraklama</label><span class="grow">'+((doc.meta.dwell||{})[m.type]||0)+' dk</span></div>';
     h+='<p class="hint">'+esc(d.hint||"")+'</p>';
     h+='<div class="btns" style="margin-top:6px"><button class="danger" id="bDelMarker">Marker\'ı sil</button></div>';
     box.innerHTML=h; bindInspector(m, "marker");
+    if(el("bFace")) el("bFace").onclick=()=>{
+      beginEdit(); m.props=m.props||{}; m.props.face=guessFace(cellById(m.cell)); endEdit(true); };
     el("bDelMarker").onclick=()=>{ beginEdit(); doc.markers=doc.markers.filter(x=>x.id!==m.id); sel={t:null,id:null}; endEdit(true); };
   }
 }
@@ -1603,6 +2122,11 @@ function bindInspector(obj, kind){
       endEdit(true);
     });
   });
+  box.querySelectorAll("[data-pcls]").forEach(b=>{
+    b.onclick=()=>{ beginEdit();
+      obj.payoff = b.dataset.pcls+": "+payoffDetail(obj.payoff);
+      endEdit(true); };
+  });
   box.querySelectorAll("[data-m]").forEach(it=>{
     it.onclick=()=>{ sel={t:"marker",id:it.dataset.m}; renderInspector(); invalidate(); };
   });
@@ -1623,6 +2147,18 @@ function syncForms(){
   const li=el("lockInfo");
   if(lockN){ li.style.display="block"; li.innerHTML="<b>"+lockN+" hücre kilitli.</b> Yeniden üretim yalnız kilitsiz alanı ve <i>tamamen</i> kilitsiz kenarları değiştirir."; }
   else li.style.display="none";
+}
+function renderDwell(){
+  const box=el("dwellEditor"); if(!box) return;
+  box.innerHTML=MARKER_ORDER.map(t=>
+    '<div class="row"><label style="flex:0 0 132px;font-size:10.5px">'+esc(MARKERS[t].label)+'</label>'+
+    '<input type="number" step="0.25" min="0" data-dw="'+t+'" value="'+((doc.meta.dwell||{})[t]||0)+'"></div>').join("");
+  box.querySelectorAll("[data-dw]").forEach(inp=>inp.onchange=()=>{
+    beginEdit();
+    doc.meta.dwell=doc.meta.dwell||{};
+    doc.meta.dwell[inp.dataset.dw]=Math.max(0,+inp.value||0);
+    endEdit(true);
+  });
 }
 function bindMeta(id,key,parse){
   el(id).addEventListener("change",()=>{
@@ -1682,7 +2218,8 @@ let fileHandle=null, fileName=null;
 const AUTOKEY="project_maze.maze_tool.autosave";
 
 function serialize(d){
-  d.meta.modifiedAt=nowISO();
+  // Yalnız gerçekten değişmişken damgala — aksi halde her Ctrl+S boş bir git diff üretir.
+  if(dirty) d.meta.modifiedAt=nowISO();
   const J=o=>JSON.stringify(o);
   const arr=(items,norm)=> items.length ? "\n"+items.map(o=>"    "+J(norm(o))).join(",\n")+"\n  " : "";
   return "{\n"+
@@ -1695,9 +2232,13 @@ function serialize(d){
     '  "markers": ['+arr(d.markers,normMarker)+"]\n"+
     "}\n";
 }
+let loadReport=null;
 function adoptDoc(obj){
+  loadReport=null;
   if(!obj||typeof obj!=="object") throw new Error("Geçersiz JSON.");
   if(obj.format!==FORMAT) throw new Error('Beklenen format "'+FORMAT+'", bulunan: '+obj.format);
+  if((obj.version||1) > SCHEMA_VERSION)
+    throw new Error("Dosya şema v"+obj.version+", bu araç v"+SCHEMA_VERSION+" — daha yeni bir sürümle açılmalı (yükleseydim sessizce eski sürüme düşürürdüm).");
   const zid=(obj.meta&&obj.meta.zoneId)||"enkaz";
   const P=ZONE_PRESETS[zid]||ZONE_PRESETS.enkaz;
   const meta=Object.assign({
@@ -1719,8 +2260,27 @@ function adoptDoc(obj){
     const n=parseInt(String(o.id||"").slice(1),10); if(Number.isFinite(n)&&n>mx) mx=n;
   }
   if(!(doc.nextId>mx)) doc.nextId=mx+1;
+  // SEMA §4 değişmezi: `a` daima `b`'nin batısında veya kuzeyinde. Bozuksa
+  // resizeGrid o kenarı düşürüp yeni ID üretir → stable-ID sözleşmesi sessizce kırılır.
+  const byId=new Map(doc.cells.map(c=>[c.id,c]));
+  let badDir=0;
+  for(const e of doc.edges){ const A=byId.get(e.a), B=byId.get(e.b);
+    if(!A||!B) continue;
+    const okDir=(A.y===B.y && B.x===A.x+1)||(A.x===B.x && B.y===A.y+1);
+    if(!okDir){ badDir++; if((B.y===A.y&&A.x===B.x+1)||(B.x===A.x&&A.y===B.y+1)){ const t=e.a; e.a=e.b; e.b=t; } }
+  }
   reindex();
+  const before={cells:doc.cells.length, markers:doc.markers.length};
   resizeGrid(doc.meta.gridW, doc.meta.gridH);   // kafes bütünlüğünü garanti et
+  let migrated=0;
+  for(const mk of doc.markers){
+    mk.props=mk.props||{};
+    if(NEEDS_FACE.has(mk.type) && !mk.props.face){ mk.props.face=guessFace(cellById(mk.cell)); migrated++; }
+    if(NEEDS_YAW.has(mk.type) && !Number.isFinite(+mk.props.yaw)){ mk.props.yaw=0; migrated++; }
+  }
+  loadReport={ badDir, migrated,
+    lostCells: Math.max(0, before.cells-doc.cells.length),
+    lostMarkers: before.markers-doc.markers.length };
   undoStack=[]; redoStack=[]; sel={t:null,id:null};
 }
 function defaultName(){ return (doc.meta.zoneId||"bolge")+".maze.json"; }
@@ -1769,11 +2329,27 @@ function loadText(text, name){
     adoptDoc(JSON.parse(text));
     fileName=name||defaultName(); fileHandle=null; dirty=false;
     refreshAll(); fitView();
-    toast("Yüklendi: "+fileName+" — "+doc.cells.length+" hücre, "+doc.markers.length+" marker","ok");
+    const r=loadReport||{};
+    const warn=[];
+    if(r.lostMarkers>0) warn.push(r.lostMarkers+" marker ızgara dışında kaldı ve SİLİNDİ");
+    if(r.lostCells>0)   warn.push(r.lostCells+" hücre ızgara dışında kaldı");
+    if(r.badDir>0)      warn.push(r.badDir+" kenarın a/b sırası düzeltildi (SEMA §4)");
+    if(r.migrated>0)    warn.push("şema v1→v2: "+r.migrated+" yönelim alanı tahminle dolduruldu — gözden geçir");
+    toast("Yüklendi: "+fileName+" — "+doc.cells.length+" hücre, "+doc.markers.length+" marker"+
+          (warn.length? " ⚠ "+warn.join("; ") : ""), warn.length?"err":"ok");
   }catch(err){ toast("Açılamadı: "+err.message,"err"); }
 }
+let autosaveWarned=false;
 function autosave(){
-  try{ localStorage.setItem(AUTOKEY, JSON.stringify({name:fileName, t:Date.now(), d:doc})); }catch(e){}
+  try{
+    localStorage.setItem(AUTOKEY, JSON.stringify({name:fileName, t:Date.now(), d:doc}));
+    autosaveWarned=false;
+  }catch(e){
+    // Kota dolduğunda sessizce ölürse README'nin "sekme kapanırsa geri yüklenir"
+    // vaadi yalan olur; üstelik içeride ESKİ bir yedek kalır.
+    if(!autosaveWarned){ autosaveWarned=true;
+      toast("Otomatik kayıt yapılamıyor (tarayıcı kotası). Ctrl+S ile diske kaydet.","err"); }
+  }
 }
 
 /* ==========================================================================
@@ -1820,6 +2396,7 @@ function updateHeader(){
 function buildViewToggles(){
   const defs=[["zone","Alt-bölge renkleri"],["markers","Marker'lar"],["path","Kritik yol"],["warn","Uyarı katmanı"],
               ["locked","Kilit deseni"],["oneway","Tek yön okları"],["kind","Hücre tipi izleri"],
+              ["sight","Görüş hattı ısı haritası"],["debt","Ödemeyen ölü uç işareti"],
               ["coords","Koordinat"],["ids","ID"],["opendots","Açık kenar noktaları"]];
   el("viewToggles").innerHTML=defs.map(([k,l])=>
     '<label class="chk"><input type="checkbox" data-v="'+k+'"'+(VIEW[k]?" checked":"")+'> '+esc(l)+'</label>').join("");
@@ -1836,12 +2413,12 @@ function boot(){
 
   // meta bağlama
   bindMeta("fZoneName","zoneName");
-  bindMeta("fCellSize","cellSize",v=>+v);
-  bindMeta("fWalk","walkSpeed",v=>Math.max(0.2,+v));
-  bindMeta("fTarget","criticalPathTargetMin",v=>+v);
-  bindMeta("fExplore","explorationFactor",v=>Math.max(1,+v));
-  bindMeta("fFogMin","fogMin",v=>+v);
-  bindMeta("fFogMax","fogMax",v=>+v);
+  bindMeta("fCellSize","cellSize",v=>clamp(+v||6,0.5,50));
+  bindMeta("fWalk","walkSpeed",v=>clamp(+v||1.4,0.2,10));
+  bindMeta("fTarget","criticalPathTargetMin",v=>Math.max(0,+v||0));
+  bindMeta("fExplore","explorationFactor",v=>clamp(+v||1,1,3));
+  bindMeta("fFogMin","fogMin",v=>clamp(+v||40,1,500));
+  bindMeta("fFogMax","fogMax",v=>clamp(+v||80,1,500));
   bindMeta("fNotes","notes");
   bindMeta("fSeed","seed",v=>(+v)|0);
   el("fZoneId").onchange=()=>{
@@ -1910,10 +2487,11 @@ function boot(){
   window.addEventListener("beforeunload", e=>{ if(dirty){ e.preventDefault(); e.returnValue=""; }});
 
   // açılış belgesi: otomatik kayıt varsa geri yükle
-  let restored=false;
+  let restored=false, restoredAt="";
   try{
     const raw=localStorage.getItem(AUTOKEY);
-    if(raw){ const o=JSON.parse(raw); adoptDoc(o.d); fileName=o.name||null; restored=true; }
+    if(raw){ const o=JSON.parse(raw); adoptDoc(o.d); fileName=o.name||null; restored=true;
+      restoredAt=o.t? new Date(o.t).toLocaleString("tr-TR") : "tarih yok"; }
   }catch(e){ restored=false; }
   if(!restored){
     createDoc("enkaz");
@@ -1921,7 +2499,7 @@ function boot(){
   }
   zonePick=(doc.meta.zones[0]||{}).id||null;
   resizeCanvas(); refreshAll(); fitView();
-  if(restored) toast("Otomatik kayıttan geri yüklendi — sıfırlamak için Yeni…");
+  if(restored) toast("Otomatik kayıttan geri yüklendi ("+restoredAt+") — bu DİSKTEKİ dosya değil. Sıfırlamak için Yeni…");
 }
 boot();
 </script>
