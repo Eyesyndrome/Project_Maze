@@ -4,6 +4,46 @@ Her oturum sonunda en üste yeni kayıt eklenir. Format: tarih → yapılanlar �
 
 ---
 
+## 2026-09-01 — Oturum 3: Araç denetimi ve revizyon
+
+### Yapılanlar
+İki **bağımsız ajan** aracı denetledi (CLAUDE.md süreç kuralı): (1) canon denetçisi — GDD uyumu, mantık doğruluğu, importer hazırlığı; (2) **level designer** — aracı gerçekten kullanarak, ~20 sürülmüş oturum + 240 eylemlik fuzz + ekran görüntüsü incelemesi. Her bulgu GDD'den tek tek doğrulandı, sonra uygulandı. `tools/test_maze_findings.js` (yeni, 30+ doğrulama) her düzeltmeyi kilitliyor.
+
+**Araç yanlış bilgi veriyordu — en ağır sınıf:**
+- Tek yönlü kapılar erişilebilirlik denetimini deliyordu (`reachableFrom` yönsüzdü).
+- **Sembol-kapının gerçekten geçit olup olmadığı hiç denetlenmiyordu** — etrafından dolaşılabilen kapı §4.4'ün tek zorunlu bulmacasını iptal eder. LD'nin "en yüksek değerli eksik denetim" dediği şey.
+- 60 sn kuralı koridorun TAMAMINDA öğe arıyordu, öğeler ARASINDAKİ boşluğu değil → koridorun başına tek grafiti koymak 124 saniyelik düzlüğü temizliyordu.
+- Kritik yol zincirindeki silinmiş durak sessizce atlanıyor, süre tahmini sessizce kısalıyordu (62,8 → 38,5 dk, tek uyarı yok).
+- Kaybolma payı hâlâ bütçe kıyasının içindeydi (§7.3 payı bütçenin ÜSTÜNE koyar).
+- §7.3'ün açık **backtracking yasağı** hiç ölçülmüyordu; bütçeyi tutturmanın en kolay yolu zikzaktı.
+
+**Canon hatalarım:** `belge` marker'ı — §8.1/§8.4 belgeleri **Kırık'lara** bağlar, ben ölü uç ödeyicisi yapmıştım (ödeyen §7.7-3'te grafiti). Watcher↔Kırık **10 m kuralını uydurmuşum** (o sayı §6.1'in soft-fail dokunulmazlığı); kural §6.2'den savunulabilir olduğu için korundu ama `§6.2*` ile araç eklentisi diye işaretlendi.
+
+**Şema v2 — importer'ın önkoşulu:** marker **yönelimi** yoktu (`props.face` / `props.yaw`). Importer `*_generated.tscn`'i her rebuild'de kurduğu için Godot'ta elle verilen rotasyon silinirdi — yön veride yaşamak zorunda. v1 dosyaları otomatik göç eder.
+
+**İş akışı (LD'nin ölçtüğü zaman kayıpları):** oda fırçası (`R`, tek hareketle avlu; `room` hücreler artık üretimden muaf — elle açılan avlu her yeni tohumda yok oluyordu), `Shift`+sürükle dikdörtgen alan, sınıflı + toplu ölü uç ödemesi (bölge başına ~240 eylemdi), `meta.dwell` düzenlenebilir oldu, kenar sürüklemesi artık sessizce kapı üretmiyor.
+
+**Görsel:** marker paletinin 11 tipinden 4'ü kırpılıyordu (Ruh Çarpışması görünmüyordu ama doğrulama onu istiyordu); doğrulama paneli metriklerin üstüne alındı (1366×768'de ekran dışındaydı); `void` hücreler alt-bölge rengiyle boyanıp avlu gibi görünüyordu; kritik yola yön okları + durak rozetleri + tekrar segmenti rengi.
+
+**Yeni ölçümler:** görüş hattı ısı haritası + "sis içinde görüşü olan kavşak %" (§7.1-1/§7.1-5), kavşak derece dağılımı, **tempo şeridi** (§7.7-2 tempo vanası), en uzun Kırık'sız parça, **hız duyarlılık satırı**.
+
+**Ölçek:** kaybolma payı bütçeden çıkınca taban alanları büyüdü → ön ayarlar ölçülerek yeniden boyutlandı (Enkaz 20×20, 2a/2b 42×38). `ornek.maze.json` yeniden kuruldu: kapı artık labirentin **kendi köprülerinden** birine oturuyor, zincir zikzak yerine **tur** → tekrar yürüme %42'den %8'e indi.
+
+### Sahibin kararına sunulan (birikmiş liste)
+1. **`cells[].payoff` alanı** (SEMA §5.1) — onaylanırsa GDD §7.2'ye işlenmeli.
+2. **İki araç eşiği** (SEMA §5.1.1): Watcher↔Kırık 10 m, is lekesi↔kapı 12 hücre. GDD'de yok.
+3. **Landmark marker tipi.** §7.1-2'nin **birinci** oryantasyon katmanı (uzak kule) veri modelinde yok — §7.2 marker listesinde de yok. LD: "landmark + görüş hattı olmadan sisli bir labirenti denetlediğimi söyleyemem." Bu bir **GDD kararı**, araç kararı değil. Eklenirse araç görüş hattı hesabını zaten yapıyor.
+4. **`walkSpeed 1.4 m/s` doğrulanmadı** — aracın en riskli varsayımı. Controller 1.8'e otururasa her bölge ~%22 kısalır ve bu, taban alanı kurulduktan sonra ortaya çıkar. Panelde duyarlılık satırı var ama sayı controller'dan gelmeli.
+5. **Bölgeler arası toplam (≥120 dk) araç kapsamı dışında** — üç bölge birden "yeşil"ken toplam plandan düşük olabilir; sessizlik beat'inin 10 dk'sı hiçbir dosyada yaşamıyor, Merkez araç dışı.
+6. **Koridor genişliği** — `cellSize` bölge geneli için tek; §9.5'in "dar servis ↔ geniş avlu" kontrastı ölçülemiyor. LD hücre/alt-bölge başına `genislik: dar|normal|genis` öneriyor (kit seçimini de yönlendirir).
+
+### Sıradaki işler
+1. **[SAHİBİ] Aracı kullan** — `tools/maze_tool.html` çift tıkla, `ornek.maze.json`'u aç. Yukarıdaki 6 kararı ver.
+2. **[BEKLEMEDE] Godot importer** — Godot MCP gelmeden BAŞLAMA. Sözleşme hazır: `tools/SEMA.md` v2. İlk iş ~3 saatlik idempotanlık/owner spike'ı.
+3. Uygulanmayan LD önerileri (bilinçli ertelendi): bölge kopyala/yapıştır (§7.7-4 sahte aşinalık koridoru), opsiyonel döngü için ikinci durak zinciri, cetvel aracı.
+
+---
+
 ## 2026-09-01 — Oturum 2: Labirent yazım aracı v1
 
 ### Yapılanlar
