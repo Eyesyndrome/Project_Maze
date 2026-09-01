@@ -4,6 +4,31 @@ Her oturum sonunda en üste yeni kayıt eklenir. Format: tarih → yapılanlar �
 
 ---
 
+## 2026-09-01 — Oturum 2: Labirent yazım aracı v1
+
+### Yapılanlar
+- **`tools/SEMA.md` — `*.maze.json` şeması v1 donduruldu.** Godot importer'ının sözleşmesi. Kritik tasarım kararları: (a) **tam kafes** — duvarlar dahil TÜM kenarlar dosyada saklanır, duvar silmek yerine `state` değişir; böylece ID'ler yeniden üretimde ve düzenlemede sabit kalır ("iki import = sıfır diff" şartının dayanağı). (b) monoton `nextId`, silinen ID asla yeniden kullanılmaz. (c) koordinat/pivot sözleşmesi tek anlamlı yazıldı (grid +y → Godot +Z, `cell_center_floor`). (d) kilit-sınır kuralı §7'de operasyonelleştirildi.
+- **`tools/maze_tool.html` — araç yazıldı** (tek dosya, offline, bağımlılık yok, ~1900 satır). Seed'li üretim (recursive backtracker + braid), kilitli bölge korumalı kısmi yeniden üretim, elle düzenleme (kenar/kapı/tek yön, alt-bölge ve hücre tipi boyama, tipli marker'lar), kritik yol durak zinciri editörü, Lynch metrik paneli ve canon doğrulayıcı.
+- **`tools/ornek.maze.json`** — kurulmuş Enkaz bölgesi: 0 hata, 0 uyarı, döngü %69,5, 17 ölü ucun hepsi ödenmiş.
+- **`tools/test_maze_tool.js`** — 45 doğrulama, gerçek Chromium'da (Playwright) koşuyor. Testler 4 gerçek hata yakaladı ve düzeltildi: (1) `autoBraid` kesirli ikili arama iki komşu tamsayı adım arasında sıkışıyordu → arama ölü uç sayısı üzerinde tamsayıya çevrildi, artık kaba kuvvetle aynı sonucu buluyor; (2) `Object.assign(varsayılanlar, girdi)` anahtar sırasını bozup dosyayı ilk yüklemede diff üretir hâle getiriyordu → kanonik anahtar sırası eklendi (importer idempotanlığı için kritik); (3) yüksek zoom'da kenar aracıyla hücre ortasına tıklamak sessiz no-op'tu → en yakın kenar seçilir oldu; (4) marker'a tıklayınca seçilmiyordu → hücre yedeği eklendi.
+- **Bağımsız denetçi ajan** çalıştırıldı (CLAUDE.md süreç kuralı).
+
+### Sahibin kararına sunulan iki bulgu
+1. **ÖLÇEK — GDD §7.3 bütçeleri ilk hesapla uyuşmadı.** Kaybolma payı çarpanı önce 2,5 alınmıştı; GDD §7.3 kaybolma payını kritik yol bütçesinin **ÜSTÜNE** koyduğu için (tüm oyun +10–15 dk) **1,15'e** çekildi. Sonuç: Enkaz'ın 15 dakikası 28×28 değil **~16×16 ızgara (96×96 m)** demek. Bölge ön ayarları yeniden boyutlandı (Enkaz 16×16, 2a/2b 34×32) — bunlar **başlangıç noktası**, metrik paneliyle ayarlanacak. Ayrıca: bölge dakika bütçesi üç kaldıraçla tutturulur (durak zinciri, duraklama süreleri, taban alanı) ve en ucuzu **durak zinciridir** — taban alanı büyütmek landmark borcu üretir (§7.2 büyütme kuralı).
+2. **ŞEMA EKLENTİSİ — `cells[].payoff`.** GDD §7.1-3 ölü uç borcunu "manzara" ile de ödetiyor ama §7.2 marker listesinde manzara/landmark tipi **yok**. Canon marker listesini sessizce genişletmek yerine hücre üstünde serbest metin alanı tanımlandı. **Onaylanırsa GDD §7.2'ye işlenmeli.**
+
+### Sıradaki işler
+1. **[SAHİBİ] Aracı kullan.** `tools/maze_tool.html` çift tıkla, `ornek.maze.json`'u aç, üretim/düzenleme akışını dene. Geri bildirim: hangi işlem akşam seansında yavaş kalıyor?
+2. **[SAHİBİ] Yukarıdaki iki kararı ver** (ölçek varsayılanları, `payoff` alanı).
+3. **[BEKLEMEDE] Godot importer** — sahibi Godot MCP kuracak; gelmeden BAŞLAMA. İlk iş ~3 saatlik idempotanlık/owner spike'ı (GDD §7.2). Sözleşme hazır: `tools/SEMA.md`.
+4. Oyun projesinin Godot iskeleti + 1. hafta teknik doğrulamaları (GDD §12.1) — Godot MCP sonrası.
+
+### Açık kararlar / notlar
+- `meta.walkSpeed` (şimdilik 1,4 m/s) oyuncu controller'ı yazıldığında **aynı sabitle** güncellenmeli (GDD §7.2). `meta.dwell` duraklama süreleri tahmindir; playtest'te ölçülecek ilk şey.
+- Önceki oturumdan devam: LORE `[öneri]` isimleri, final oyun adı, Godot sürümü pinlenmesi.
+
+---
+
 ## 2026-09-01 — Oturum 1: GDD, Lore ve araç mimarisi
 
 ### Yapılanlar

@@ -8,6 +8,15 @@ tarayıcı aracı. Kaynak karar: **GDD §7.2**. Veri sözleşmesi: **[`SEMA.md`]
 | `maze_tool.html` | Aracın kendisi. Bağımlılık yok, internet yok, kurulum yok. |
 | `SEMA.md` | `*.maze.json` şeması (v1, donduruldu). Godot importer'ının sözleşmesi. |
 | `ornek.maze.json` | Tam kurulmuş örnek Enkaz bölgesi — 0 hata, 0 uyarı. |
+| `test_maze_tool.js` | 45 doğrulama: üretim, kilit kuralı, şema yuvarlak-gidişi, canon denetimleri, UI. |
+| `test_maze_robustness.js` | Bozuk dosya, indirme yedeği, kopan kilitli ada, büyük ızgara performansı. |
+
+**Testleri koşturmak** (Chromium + Playwright gerekir; araç kullanmak için gerekmez):
+
+```
+NODE_PATH=$(npm root -g) node tools/test_maze_tool.js
+NODE_PATH=$(npm root -g) node tools/test_maze_robustness.js
+```
 
 ## Çalıştırma
 

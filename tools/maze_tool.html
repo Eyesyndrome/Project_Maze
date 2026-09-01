@@ -396,6 +396,9 @@ function createDoc(zoneId){
   doc = d;
   buildLattice(P.w, P.h);
   reindex();
+  // Yeni belge, dosya kimliğini de sıfırlar — aksi halde Ctrl+S bir önceki
+  // bölgenin dosyasının ÜSTÜNE yazardı.
+  fileHandle=null; fileName=null; dirty=false; undoStack=[]; redoStack=[]; sel={t:null,id:null};
   return d;
 }
 
@@ -1794,7 +1797,6 @@ function openNewDialog(){
     ov.remove();
     createDoc(b.dataset.z);
     zonePick=(doc.meta.zones[0]||{}).id||null;
-    fileHandle=null; fileName=null; dirty=false; undoStack=[]; redoStack=[];
     doc.meta.braid=+autoBraid(doc.meta.seed, LYNCH.loopTarget).toFixed(3);
     refreshAll(); fitView();
     toast("Yeni bölge: "+doc.meta.zoneName+" — 'Oyuncu başlangıcı' marker'ını yerleştirerek başla","ok");
