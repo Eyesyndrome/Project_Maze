@@ -4,6 +4,36 @@ Her oturum sonunda en üste yeni kayıt eklenir. Format: tarih → yapılanlar �
 
 ---
 
+## 2026-09-01 — Oturum 4: İki tasarımcı kontrolü (ölü uç sayısı + maks sapma)
+
+### Yapılanlar
+Sahibin isteği: oyun deneyimi üzerinde doğrudan kontrol. Şema **v3**.
+
+**1) Ölü uç sayısı (`meta.targetDeadEnds`).** Ölü uç sayısı estetik tercih değil, **içerik borcu bütçesi**: her ölü uç §7.1-3'e göre ödemek zorunda → **N ölü uç = N ödeme metni**. Sayı `braid` içinde monoton azaldığı için tamsayı ikili arama hedefi **tam** tutturuyor (5/10/20/40/60/80 hedeflerinin hepsinde sapma 0).
+
+**2) Maks sapma (`meta.maxDetourMin`).** Her hücrenin kritik yola BFS uzaklığı ölçülüyor. Örnek Enkaz'da sınırsızken en derin sapma **37 hücre = 2,6 dk tek yön / 5,3 dk gidiş-dönüş** çıkıyordu — 17 dakikalık bölgede tek sapmada üçte biri. Uygulayan işlemler: **Bağla** (kısayol aç, alan korunur), **Kırp** (sınır ötesini `void` yap), **Ör** (labirenti bozmadan döngü oranını hedefe çek), **Sınırı uygula** (bileşik tarif).
+
+### Ölçüm iki kez tasarımı değiştirdi
+- **Tek başına hiçbir işlem Lynch bandında kalmıyor:** yalnız Bağla döngüyü %95'e itiyor, yalnız Kırp %14'e düşürüyor (kırpma çeperdeki döngüleri siler, ağaç gibi çekirdek kalır). Bileşik tarif bu yüzden var.
+- **Sıra varsayımım yanlıştı.** "Kenar eklemek BFS uzaklıklarını yalnız kısaltır, o hâlde örme sınırı bozamaz" demiştim. Sapma **kritik yola** göre ölçülüyor ve kenar eklemek kritik yolun **kendisini** kısaltıyor — referans daralınca bazı hücrelerin sapması artıyor. Artık sınır ile band dönüşümlü yakınsatılıyor; **son söz sınırında** (kullanıcının açık kısıtı o).
+
+### Sahibin bilmesi gereken iki gerilim
+1. **İki hedef aynı kaldıracın iki ucu.** Ölü uç azaldıkça döngü oranı yükselir. Ölçülen: %70 döngüye karşılık gelen ölü uç sayısı **Enkaz 20×20'de 29, Sığlık 42×38'de 103**. Aşırı örülü labirentte **köprü kalmıyor** → sembol kapısı gerçek geçit olamıyor. (Ön ayarları bu ölçülen değerlere çektim; ilk yazdığım 14/30 tahminleri bandı kırıyordu.)
+2. **Dar sapma sınırı ile Lynch %70 bandı aynı anda tutmayabilir** — her hücreyi rotaya yaklaştırmak grafiği zorunlu yoğunlaştırır. Araç susarak çözmüyor, çakışmayı `info` olarak raporlayıp kaldıraçları söylüyor (sınırı gevşet / taban alanını küçült / rotayı alanın içinden daha çok geçir).
+
+### Yol üstünde bulunan kusur
+Bir önceki oturumda eklediğim **duraklama (dwell) editörü ölü UI'ymış**: `renderDwell()` tanımlıydı ama hiç çağrılmıyordu, yeni meta alanları da forma yansımıyordu. Sebep: kör string değişiminin sessizce eşleşmemesi. Testlerim "panel var mı" diye sorduğu için kaçmıştı; artık "değer belgeye yansıdı mı, düzenleme belgeye yazılıyor mu" diye soruyor.
+
+### Test durumu
+`test_maze_tool` 47 · `test_maze_robustness` 13 · `test_maze_findings` 38 · `test_maze_control` 40 = **138 doğrulama, 0 hata.**
+`ornek.maze.json` yeniden kuruldu (sapma sınırı 2 dk): en derin sapma 37 → 28 hücre, döngü %70,7, 0 hata / 0 uyarı.
+
+### Sıradaki işler
+1. **[SAHİBİ] Aracı kullan** — Oturum 3'teki 6 açık karar duruyor (en önemlisi: landmark marker tipi = GDD kararı, ve `walkSpeed` doğrulaması).
+2. **[BEKLEMEDE] Godot importer** — Godot MCP gelmeden başlama. Sözleşme: `tools/SEMA.md` v3.
+
+---
+
 ## 2026-09-01 — Oturum 3: Araç denetimi ve revizyon
 
 ### Yapılanlar
