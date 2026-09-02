@@ -178,6 +178,22 @@ button:disabled{opacity:.4;cursor:not-allowed}
         <input type="number" id="fSeed" class="grow" step="1">
         <button id="bSeedRnd" title="Rastgele tohum">🎲</button>
       </div>
+      <div class="row"><label>Hedef</label>
+        <select id="fTargetMode" class="grow">
+          <option value="loop">Döngü oranı %70 (Lynch §7.1-3)</option>
+          <option value="dead">Ölü uç sayısı</option>
+        </select>
+      </div>
+      <div class="row" id="rowDead"><label>Ölü uç</label>
+        <input type="number" id="fDeadTarget" min="0" step="1" class="grow">
+        <span class="ct" id="lDeadNow"></span>
+      </div>
+      <p class="hint" id="deadHint">Her ölü uç <b>ödemek zorundadır</b> (§7.1-3) — bu sayı doğrudan bir
+      <b>içerik borcu bütçesidir</b>: N ölü uç = N ödeme metni.<br>
+      ⚠ İki hedef aynı kaldıracın iki ucudur: ölü uç azaldıkça <b>döngü oranı yükselir</b> ve
+      Lynch bandından (%70±5) çıkabilir. Aşırı örülü labirentte <b>boğaz kalmaz</b> — sembol
+      kapısı gerçek geçit olamaz, doğrulayıcı "bypass edilebilir" der. Ön ayarlar %70 döngüye
+      karşılık gelen sayılardır.</p>
       <div class="row"><label>Örgü (braid)</label>
         <input type="range" id="fBraid" class="grow" min="0" max="1" step="0.01">
         <span id="lBraid" style="width:34px;text-align:right">0.70</span>
@@ -192,6 +208,27 @@ button:disabled{opacity:.4;cursor:not-allowed}
       <label class="chk" style="margin-top:7px"><input type="checkbox" id="fKeepMarkers" checked> Üretimde marker'ları koru</label>
       <div class="warnbox" id="lockInfo" style="display:none"></div>
       <p class="hint">Kilit-sınır kuralı: ucu kilitli/void/manual hücreye değen kenar yeniden üretimde <b>dokunulmazdır</b> (SEMA §7).</p>
+    </div></div>
+
+    <div class="panel" id="pDetour"><h2>Rota disiplini</h2><div class="body">
+      <div class="row wide"><label>Maks sapma (dk)</label>
+        <input type="number" id="fMaxDetour" step="0.25" min="0" class="grow"></div>
+      <p class="hint">Oyuncunun ana rotadan <b>tek yön</b> uzaklaşabileceği süre. Sapmanın gerçek
+      maliyeti <b>gidiş-dönüş</b>, yani bunun iki katı. 0 = sınır yok.</p>
+      <div id="detourStats"></div>
+      <div class="btns" style="margin-top:6px">
+        <button class="pri" id="bDetourApply" title="Kırp → Lynch'e ör → Bağla">Sınırı uygula</button>
+      </div>
+      <div class="btns" style="margin-top:4px">
+        <button id="bDetourLink" title="Derin sapmalara rotaya yakın kısayol açar — alan korunur">Bağla</button>
+        <button id="bDetourTrim" title="Sınırın ötesindeki hücreleri bölgeden çıkarır (void)">Kırp</button>
+      </div>
+      <p class="hint"><b>Sınırı uygula</b> önerilen tariftir: kırp → Lynch'e ör → bağla. Tek başına
+      hiçbiri bandı korumaz (ölçüldü: yalnız <b>Bağla</b> döngüyü %95'e iter, yalnız <b>Kırp</b>
+      %14'e düşürür — kırpma çeperdeki döngüleri siler).<br>
+      <b>Bağla:</b> sapmayı döngüye çevirir, alan korunur. <b>Kırp:</b> fazlalığı bölgeden çıkarır
+      (<code>void</code>), taban alanı küçülür. Hiçbiri kilitli/manuel hücrelere, marker taşıyan
+      kenarlara dokunmaz ve <b>hiçbiri sembol kapısını bypass etmez</b>.</p>
     </div></div>
 
     <div class="panel collapsed" id="pGrid"><h2>Izgara ve meta</h2><div class="body">
@@ -278,7 +315,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
 /* ==========================================================================
    0. SABİTLER — hepsi GDD'den türetilmiştir; araç yeni sabit icat etmez.
    ========================================================================== */
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 const FORMAT = "project_maze.maze";
 
 const LYNCH = {
@@ -300,18 +337,18 @@ const LYNCH = {
 // Bölge ön ayarları — GDD §7.3 tablosu.
 const ZONE_PRESETS = {
   enkaz: {
-    name:"Enkaz", w:20, h:20, target:15, kirik:1, kapi:1, ruh:0, perde:null,
+    name:"Enkaz", w:20, h:20, target:15, kirik:1, kapi:1, ruh:0, perde:null, deadEnds:29, detour:1.25,
     zones:[{id:"enkaz_cekirdek",name:"Enkaz çekirdeği",color:"#3a3f46"},
            {id:"guvenli_oda",  name:"Güvenli oda (öğretim)",color:"#2f4858"}]
   },
   sighlik_2a: {
-    name:"Sığlık", w:42, h:38, target:37, kirik:1, kapi:1, ruh:1, perde:"p1",
+    name:"Sığlık", w:42, h:38, target:37, kirik:1, kapi:1, ruh:1, perde:"p1", deadEnds:100, detour:2.0,
     zones:[{id:"avlular",name:"Geniş avlular",color:"#3c4450"},
            {id:"servis",  name:"Dar servis koridorları",color:"#2c333c"},
            {id:"cevre_galerisi",name:"Çevre galerisi (ops. döngü)",color:"#2f4a3a"}]
   },
   derin_sighlik_2b: {
-    name:"Derin Sığlık", w:42, h:38, target:37, kirik:1, kapi:1, ruh:0, perde:"p2",
+    name:"Derin Sığlık", w:42, h:38, target:37, kirik:1, kapi:1, ruh:0, perde:"p2", deadEnds:100, detour:2.0,
     zones:[{id:"tas_katman",name:"Taş katman",color:"#3b3a30"},
            {id:"duat_izleri",name:"Duat izleri",color:"#2e3a4d"},
            {id:"dusey_setpiece",name:"Düşey set-piece",color:"#4a3a2e"}]
@@ -402,7 +439,7 @@ function newId(pfx){ const n = doc.nextId++; return pfx + n; }
 /* Kanonik anahtar sırası — dosyanın yüklenip yeniden yazılması diff üretmemeli.
    (Object.assign(varsayilanlar, girdi) anahtar sırasını bozar; bu yüzden açıkça kuruyoruz.) */
 const META_KEYS=["zoneId","zoneName","gridW","gridH","cellSize","walkSpeed","pivotConvention","seed","braid",
-  "criticalPathTargetMin","explorationFactor","fogMin","fogMax","dwell","criticalPath","zones","notes",
+  "criticalPathTargetMin","explorationFactor","targetDeadEnds","maxDetourMin","fogMin","fogMax","dwell","criticalPath","zones","notes",
   "createdAt","modifiedAt"];
 function normMeta(m){
   const o={}; for(const k of META_KEYS) o[k]=m[k];
@@ -427,6 +464,8 @@ function createDoc(zoneId){
       cellSize: 6.0, walkSpeed: 1.4, pivotConvention:"cell_center_floor",
       seed: (Math.random()*1e9)|0, braid: LYNCH.loopTarget,
       criticalPathTargetMin: P.target, explorationFactor: 1.15,  // yalnız MEDYAN tahmininde; bütçe kıyası paysız
+      targetDeadEnds: P.deadEnds,      // ölü uç HEDEFİ (içerik borcu bütçesi); null = döngü oranına göre üret
+      maxDetourMin: P.detour,          // ana rotadan tek yön maks uzaklaşma (dk)
       fogMin: 40, fogMax: 80,
       dwell: defaultDwell(),
       criticalPath: null,
@@ -605,6 +644,35 @@ function braidPass(rnd, ratio, genSet){
   return {total, opened};
 }
 
+/* Ölü uç SAYISINA göre örgüyü ayarla.
+   Ölü uç sayısı `want` (açılan ölü uç adedi) içinde monoton azalır — açılan her
+   ölü uç ya kendini ya da komşusunu çözer, hiçbiri yenisini üretmez — bu yüzden
+   tamsayı ikili arama kesin sonucu bulur.
+
+   NEDEN AYRI BİR KONTROL: her ölü uç GDD §7.1-3'e göre ÖDEMEK zorundadır
+   (Kırık / sembol / lore / manzara). Yani ölü uç sayısı doğrudan bir İÇERİK
+   BORCU bütçesidir — %70 döngü hedefi 2a/2b'de 70-90 ölü uç üretiyor ve hepsine
+   metin yazmak seansın en büyük mekanik yükü. Tasarımcı bu sayıyı doğrudan
+   seçebilmeli; döngü oranı da panelde görünür kalır ve banttan çıkarsa uyarır. */
+function targetDeadEnds(seed, N){
+  generate(seed, 0, {});
+  const total = computeMetrics().deadEnds.length;
+  if(!total) return 0;
+  if(N >= total){ generate(seed, 0, {}); return 0; }   // mükemmel labirentten fazlası mümkün değil
+  const evalK = k => { generate(seed, k/total, {}); return computeMetrics().deadEnds.length; };
+  let lo=0, hi=total;
+  while(lo<hi){ const mid=(lo+hi)>>1; if(evalK(mid) > N) lo=mid+1; else hi=mid; }
+  let best={k:lo, d:Math.abs(evalK(lo)-N)};
+  for(const k of [lo-1, lo+1]){
+    if(k<0||k>total) continue;
+    const d=Math.abs(evalK(k)-N);
+    if(d<best.d) best={k,d};
+  }
+  const r=best.k/total;
+  generate(seed, r, {});
+  return r;
+}
+
 /* Örgüyü hedef döngü oranına ayarla.
    Ölçülen döngü oranı `want` (açılan ölü uç sayısı) içinde monotondur; bu yüzden
    arama braid kesri üzerinde değil, TAMSAYI ölü uç sayısı üzerinde yapılır —
@@ -626,6 +694,146 @@ function autoBraid(seed, target){
   const r=best.k/total;
   generate(seed, r, {});
   return r;
+}
+
+/* Sapma derinliğini SINIRIN ALTINA çekmenin iki yolu. İkisi de kilitli/void/manual
+   hücrelere ve marker taşıyan kenarlara dokunmaz (edgeGeneratable). */
+
+/* (a) BAĞLA — alanı korur, kısayol açar. Derin hücreden rotaya daha yakın bir
+   komşuya duvar açar; sapma bir DÖNGÜ hâline gelir. Lynch %70 döngü hedefiyle
+   aynı yöne çalışır, ama döngü oranını yukarı iter (panelde görünür). */
+/* Kapı bölünmeleri: bir kısayol sembol-kapının ETRAFINDAN dolanırsa kapı
+   geçersizleşir (§4.4 kritik yoldaki tek zorunlu bulmaca). Her kapı için
+   "kapı kapalıyken a tarafından erişilen küme"yi hesaplarız; bu kümeyi KESEN
+   hiçbir kenar açılmaz. Kenar açan her işlem bunu kullanmak ZORUNDA. */
+function doorPartitions(){
+  const parts=[];
+  for(const mk of doc.markers){
+    if(mk.type!=="sembol_kapi" || !mk.edge) continue;
+    const e=edgeById(mk.edge); if(!e || !edgeOpen(e)) continue;
+    const keep=e.state; e.state="wall";
+    parts.push({side:reachableFrom(e.a, buildGraph().adj), edge:e});
+    e.state=keep;
+  }
+  return parts;
+}
+const crossesDoor=(parts,c,n)=>parts.some(dp=>dp.side.has(c.id)!==dp.side.has(n.id));
+
+/* (c) ÖR — mevcut labirenti BOZMADAN döngü oranını hedefe çeker.
+   autoBraid labirenti sıfırdan üretir ve elle düzenlemeleri siler; bu ise yalnız
+   ölü uçların duvarlarını açar. Kırpma sonrası Lynch bandına dönmek için gerekir:
+   kırpma çeperdeki döngüleri sildiği için oran çöker. */
+function braidToLoopTarget(target){
+  const parts=doorPartitions();
+  let opened=0;
+  // Tek bir ölü ucu açmak uzun bir dalı komple döngüye çevirebildiği için oran
+  // basamaklı zıplar ve hedef tam tutturulamayabilir. En YAKIN duruma geri
+  // dönebilmek için her turda kenar durumları anlık görüntüleniyor.
+  const snap=()=>doc.edges.map(e=>e.state+"|"+e.dir);
+  const restore=sn=>doc.edges.forEach((e,i)=>{ const [st,dr]=sn[i].split("|"); e.state=st; e.dir=dr; });
+  let best=null;
+  for(let round=0; round<80; round++){
+    reindex(); computeMetrics();
+    const d=Math.abs(M.loopRatio-target);
+    if(best===null || d<best.d) best={d, sn:snap()};
+    if(M.loopRatio>=target) break;
+    const cands=[];
+    for(const c of M.deadEnds){
+      for(const n of neighbors(c)){
+        const e=edgeBetween(c.x,c.y,n.x,n.y);
+        if(!e || edgeOpen(e) || !isPass(n) || !edgeGeneratable(e)) continue;
+        if(crossesDoor(parts,c,n)) continue;
+        cands.push(e); break;
+      }
+    }
+    if(!cands.length) break;
+    // Tek bir ölü ucu açmak uzun bir dalı komple döngüye çevirebildiği için oran
+    // basamaklı zıplar; hedefe yaklaştıkça adım küçültülür, yakınında birer birer.
+    const gap=target-M.loopRatio;
+    const take = gap>0.30 ? Math.max(1,Math.ceil(cands.length*0.12))
+               : gap>0.20 ? Math.max(1,Math.ceil(cands.length*0.05))
+               : 1;    // seyrek labirentte tek kenar bile oranı 30 puan zıplatabilir
+    for(let i=0;i<take;i++){ cands[i].state="open"; cands[i].dir="both"; opened++; }
+  }
+  reindex(); computeMetrics();
+  if(best && Math.abs(M.loopRatio-target) > best.d){   // aştıysak en yakına dön
+    restore(best.sn); reindex(); computeMetrics();
+  }
+  return opened;
+}
+
+function linkDeepDetours(limitCells){
+  let opened=0;
+  const doorParts=doorPartitions();
+  const bypasses=(c,n)=>crossesDoor(doorParts,c,n);
+  for(let round=0; round<8; round++){
+    reindex(); computeMetrics();
+    if(!M.cp.ok) break;
+    const depth=M.detour;
+    const deep=[...depth.entries()].filter(([,d])=>d>limitCells).sort((a,b)=>b[1]-a[1]);
+    if(!deep.length) break;
+    let did=0;
+    for(const [id,d] of deep){
+      const c=cellById(id); if(!c) continue;
+      let best=null, bestGain=0;
+      for(const n of neighbors(c)){
+        const e=edgeBetween(c.x,c.y,n.x,n.y);
+        if(!e || edgeOpen(e) || !isPass(n) || !edgeGeneratable(e)) continue;
+        if(bypasses(c,n)) continue;                 // kapıyı bypass edecek kısayolu açma
+        const dn=depth.get(n.id); if(dn==null) continue;
+        const gain=d-(dn+1);
+        if(gain>bestGain){ bestGain=gain; best=e; }
+      }
+      if(best){ best.state="open"; best.dir="both"; opened++; did++; }
+    }
+    if(!did) break;                       // bu hücreler için kısayol yok → kırpma gerekir
+  }
+  reindex(); computeMetrics();
+  return {opened, kalan:(M.deepCells||[]).length};
+}
+
+/* (b) KIRP — fazlalığı bölgeden çıkarır (kind: void). Sınırdan derin hücreleri
+   silmek, sınırın altındaki hiçbir hücrenin rotaya erişimini bozamaz: BFS gereği
+   her hücrenin rotaya giden yolu kendinden SIĞ hücrelerden geçer. */
+function trimDeepDetours(limitCells){
+  reindex(); computeMetrics();
+  const depth=M.detour;
+  const keep=new Set();
+  const korunan=[];
+  // Sınırın ötesinde kalması ZORUNLU hücreler (kilitli / manuel / marker taşıyan).
+  for(const [id,d] of depth){
+    if(d<=limitCells) continue;
+    const c=cellById(id); if(!c) continue;
+    const edgeMarker = neighbors(c).some(n=>{
+      const e=edgeBetween(c.x,c.y,n.x,n.y);
+      return e && (ix.markByEdge.get(e.id)||[]).length>0;    // sembol-kapı kenarda durur
+    });
+    if(c.locked || c.kind==="manual" || (ix.markByCell.get(c.id)||[]).length>0 || edgeMarker) korunan.push(c);
+  }
+  // Zorunlu hücreyi tutmak yetmez: ONA GİDEN KORİDOR da tutulmalı, yoksa hücre
+  // etrafı silinip erişilemez bir ada olarak kalır. Derinlik gradyanını inerek
+  // rotaya kadar olan yolu koru (BFS gereği her adımda derinlik 1 azalır).
+  const adj=adjacency();
+  for(const c of korunan){
+    let cur=c.id, guard=depth.size+1;
+    while(guard-- > 0){
+      keep.add(cur);
+      const d=depth.get(cur);
+      if(d===0) break;
+      let next=null;
+      for(const {to} of (adj.get(cur)||[])) if(depth.get(to)===d-1){ next=to; break; }
+      if(next==null) break;
+      cur=next;
+    }
+  }
+  let voided=0;
+  for(const [id,d] of depth){
+    if(d<=limitCells || keep.has(id)) continue;
+    const c=cellById(id); if(!c) continue;
+    c.kind="void"; voided++;
+  }
+  reindex(); computeMetrics();
+  return {voided, korunan, koridor:Math.max(0, keep.size-korunan.length)};
 }
 
 /* ==========================================================================
@@ -717,6 +925,22 @@ function computeSight(nodes){
   }
   return sight;
 }
+/* Sapma derinliği: her hücrenin ANA ROTAYA (kritik yol) en kısa uzaklığı, hücre cinsinden.
+   Oyuncunun rotadan ne kadar uzaklaşabildiğini ölçer — "çok uzaklaşıp oyundan soğuma"
+   riski budur. Tek yön değil GEÇİLEBİLİRLİK grafiği kullanılır: sapmanın maliyeti
+   gidiş-dönüştür, yani gösterilen dakikanın iki katı. */
+function computeDetour(adj, cpCells){
+  const depth=new Map();
+  if(!cpCells || !cpCells.length) return depth;
+  const q=[];
+  for(const id of cpCells) if(!depth.has(id)){ depth.set(id,0); q.push(id); }
+  for(let h=0;h<q.length;h++){
+    const u=q[h], du=depth.get(u);
+    for(const {to} of (adj.get(u)||[])) if(!depth.has(to)){ depth.set(to, du+1); q.push(to); }
+  }
+  return depth;
+}
+
 // Köprüler (bridge) — Tarjan, iteratif. Köprü OLMAYAN kenarlar döngü üstündedir.
 function findBridges(adj, nodes){
   const disc=new Map(), low=new Map(), bridges=new Set();
@@ -839,6 +1063,16 @@ function computeMetrics(){
   // --- kritik yol
   const cp = computeCriticalPath();
 
+  // --- sapma derinliği (ana rotadan uzaklaşma)
+  const detour = computeDetour(adj, cp.ok ? cp.cells : null);
+  let maxDetour=0, maxDetourCell=null;
+  for(const [id,d] of detour) if(d>maxDetour){ maxDetour=d; maxDetourCell=cellById(id); }
+  const detourLimitCells = (doc.meta.maxDetourMin>0)
+    ? Math.max(1, Math.round(doc.meta.maxDetourMin*60*doc.meta.walkSpeed/doc.meta.cellSize))
+    : null;
+  const deepCells = detourLimitCells==null ? []
+    : [...detour.entries()].filter(([,d])=>d>detourLimitCells).map(([id])=>cellById(id)).filter(Boolean);
+
   // --- yoğunluklar
   const counts={}; for(const t of MARKER_ORDER) counts[t]=(ix.markByType.get(t)||[]).length;
 
@@ -848,6 +1082,7 @@ function computeMetrics(){
     loopCells, loopRatio, branchRatio: 1-loopRatio,
     deadEnds, unpaid, isolated, unreachable, badRuns,
     sight, junctions, fogOK, degHist, oneWayTraps,
+    detour, maxDetour, maxDetourCell, detourLimitCells, deepCells,
     startCell, cp, counts, secPerCell, hasStart: !!startCell,
     openEdges: doc.edges.filter(edgeOpen).length,
     doors: doc.edges.filter(e=>e.state==="door").length,
@@ -1161,6 +1396,34 @@ function validate(){
       add("err","SEMA §6","<b>"+esc(MARKERS[mk.type].label)+"</b> için <code>yaw</code> yok/geçersiz (bakış yönü).",{t:"marker",id:mk.id});
   }
 
+  /* --- rota disiplini: ana rotadan aşırı uzaklaşma --- */
+  if(M.detourLimitCells!=null && (M.deepCells||[]).length){
+    const one=(M.maxDetour*M.secPerCell/60);
+    addMany("warn","§7.1-1",
+      i=>"Ana rotadan "+(M.detour.get(M.deepCells[i].id))+" hücre uzakta ("+M.deepCells[i].x+","+M.deepCells[i].y+").",
+      n=>"<b>"+n+" hücre maks sapma sınırını aşıyor.</b> En derin nokta "+one.toFixed(2)+
+         " dk tek yön / <b>"+(one*2).toFixed(2)+" dk gidiş-dönüş</b> — oyuncu rotadan bu kadar "+
+         "uzaklaşırsa geri dönüş angaryaya döner. 'Rota disiplini' panelinden <b>Bağla</b> (kısayol) "+
+         "ya da <b>Kırp</b> (bölgeden çıkar). Tıkla: sıradakine git.",
+      M.deepCells.map(c=>({t:"cell",id:c.id})));
+    const dokunulmaz=M.deepCells.filter(c=>c.locked || c.kind==="manual" || (ix.markByCell.get(c.id)||[]).length>0);
+    if(dokunulmaz.length)
+      add("info","§7.1-1","Sınırı aşan hücrelerin "+dokunulmaz.length+" tanesi <b>dokunulmaz</b> "+
+          "(kilitli / manuel / marker taşıyor) — <i>Kırp</i> bunları ve onlara giden koridoru silmez. "+
+          "Sınırı gerçekten düşürmek için kilidi kaldır, marker'ı taşı ya da <i>Bağla</i> ile kısayol aç.",
+          {t:"cell",id:dokunulmaz[0].id});
+  }
+  if(M.detourLimitCells!=null && M.maxDetour<=M.detourLimitCells &&
+     Math.abs(M.loopRatio-LYNCH.loopTarget)>LYNCH.loopTol && M.scopeTotal>20)
+    add("info","§7.1","<b>Sapma sınırı ile Lynch bandı çakışıyor.</b> Sınır ("+M.detourLimitCells+
+        " hücre) bu taban alanına göre dar: her hücreyi rotaya bu kadar yaklaştırmak grafiği "+
+        "zorunlu olarak yoğunlaştırıyor, döngü oranı %"+(M.loopRatio*100).toFixed(0)+
+        " çıkıyor. Kaldıraçlar: sapma sınırını gevşet, taban alanını küçült ya da rotayı "+
+        "(durak zincirini) alanın içinden daha çok geçir.",null);
+  if(doc.meta.targetDeadEnds!=null && M.deadEnds.length!==doc.meta.targetDeadEnds)
+    add("info","§7.1-3","Ölü uç hedefi <b>"+doc.meta.targetDeadEnds+"</b>, ulaşılan <b>"+M.deadEnds.length+
+        "</b>. Üretim panelinden <i>Hedefe ayarla</i> ile yeniden çöz (elle düzenleme sayıyı kaydırmış olabilir).",null);
+
   /* --- meta değerleri makul mü --- */
   if(!(doc.meta.cellSize>0)) add("err","ŞEMA","<code>cellSize</code> ≤ 0 (<code>"+esc(String(doc.meta.cellSize))+"</code>) — tüm mesafe ve süre ölçümleri geçersiz.",null);
   if(!(doc.meta.walkSpeed>0)) add("err","ŞEMA","<code>walkSpeed</code> ≤ 0 — süre ölçümleri geçersiz.",null);
@@ -1209,7 +1472,7 @@ function validate(){
 const cv=el("cv"); const ctx=cv.getContext("2d");
 const view={z:26, px:40, py:40};
 const VIEW={zone:true, markers:true, path:true, warn:true, locked:true, oneway:true,
-            coords:false, ids:false, opendots:false, kind:true, sight:false, debt:false};
+            coords:false, ids:false, opendots:false, kind:true, sight:false, debt:false, detour:false};
 let hover={cell:null, edge:null};
 let sel={t:null, id:null};      // seçim: cell | edge | marker
 let flash={t:null, id:null, until:0};
@@ -1283,6 +1546,18 @@ function draw(){
       const f=clamp(v/Math.max(1,doc.meta.fogMax),0,1);
       if(f<=0.12) continue;
       ctx.fillStyle="rgba(88,166,255,"+(f*0.42).toFixed(3)+")";
+      ctx.fillRect(S(x),T(y),z,z);
+    }
+  }
+
+  // --- sapma derinliği ısı haritası (ana rotadan uzaklaşma)
+  if(VIEW.detour && M && M.detour && M.detour.size){
+    const lim=M.detourLimitCells, mx=Math.max(1,M.maxDetour);
+    for(let y=y0;y<=y1;y++) for(let x=x0;x<=x1;x++){
+      const c=cellAt(x,y); if(!isPass(c)) continue;
+      const d=M.detour.get(c.id); if(d==null||d===0) continue;
+      if(lim!=null && d>lim){ ctx.fillStyle="rgba(248,81,73,0.34)"; }
+      else { ctx.fillStyle="rgba(210,153,34,"+(0.10+0.30*(d/mx)).toFixed(3)+")"; }
       ctx.fillRect(S(x),T(y),z,z);
     }
   }
@@ -1557,7 +1832,7 @@ function redo(){ if(!redoStack.length) return toast("İleri alınacak adım yok"
 function refreshLight(){ reindex(); invalidate(); }
 function refreshAll(){
   reindex(); computeMetrics(); validate();
-  renderMetrics(); renderIssues(); renderInspector(); renderZones(); renderPath(); renderDebt(); syncForms(); updateHeader();
+  renderMetrics(); renderIssues(); renderInspector(); renderZones(); renderPath(); renderDebt(); renderDetour(); syncForms(); updateHeader();
   autosave(); invalidate();
 }
 
@@ -1912,6 +2187,26 @@ function renderDebt(){
     focusOn({t:"cell",id:pend[k%pend.length].id}); k++;
   };
 }
+function renderDetour(){
+  const box=el("detourStats"); if(!box) return;
+  if(!M || !M.cp || !M.cp.ok){ box.innerHTML='<p class="hint" style="color:var(--warn)">Kritik yol kurulmadan sapma ölçülemez.</p>'; return; }
+  const secPer=M.secPerCell, lim=M.detourLimitCells;
+  const one=(M.maxDetour*secPer/60);
+  const over=(M.deepCells||[]).length;
+  let h='';
+  h+='<div class="metric"><span class="lb">En derin sapma</span><span class="vl '+
+     (lim!=null ? (M.maxDetour>lim?"warn":"ok") : "")+'">'+M.maxDetour+' hücre</span>'+
+     '<span class="tg">'+one.toFixed(2)+' dk tek yön</span></div>';
+  h+='<div class="metric"><span class="lb">↳ gidiş-dönüş</span><span class="vl">'+(one*2).toFixed(2)+' dk</span>'+
+     '<span class="tg">'+(M.cp.budgetMin>0?"bölgenin %"+(one*2/M.cp.budgetMin*100).toFixed(0):"")+'</span></div>';
+  if(lim!=null){
+    h+='<div class="metric"><span class="lb">Sınır</span><span class="vl">'+lim+' hücre</span>'+
+       '<span class="tg">'+(lim*doc.meta.cellSize).toFixed(0)+' m</span></div>';
+    h+='<div class="metric"><span class="lb">Sınırı aşan hücre</span><span class="vl '+(over?"warn":"ok")+'">'+over+'</span>'+
+       '<span class="tg">'+(M.scopeTotal?("%"+(over/M.scopeTotal*100).toFixed(1)):"")+'</span></div>';
+  }
+  box.innerHTML=h;
+}
 function pct(v){ return (v*100).toFixed(0)+"%"; }
 function cls(ok,warn){ return ok?"ok":(warn?"warn":"err"); }
 function renderMetrics(){
@@ -1948,6 +2243,9 @@ function renderMetrics(){
     h+=row("<b>Bütçe kıyası</b>", "<b>"+cp.budgetMin.toFixed(1)+" dk</b>", "hedef "+tgt+" dk", cpOK?"ok":"warn");
     h+=row("Beklenen medyan", cp.medianMin.toFixed(1)+" dk", "kaybolma payı ×"+meta.explorationFactor+" — §7.3: bütçe ÜSTÜ", "");
     h+=row("En uzun Kırık'sız", cp.worstKirikMin.toFixed(1)+" dk", "soft-fail dönüş aralığı", "");
+    h+=row("En derin sapma", m.maxDetour+" hücre",
+           (m.maxDetour*m.secPerCell/60).toFixed(2)+" dk tek yön"+(m.detourLimitCells!=null?" / sınır "+m.detourLimitCells:""),
+           m.detourLimitCells!=null ? (m.maxDetour>m.detourLimitCells?"warn":"ok") : "");
     // walkSpeed duyarlılığı — aracın en riskli varsayımı görünür olsun
     const sens=[1.2,1.4,1.8,2.2].map(v=>{
       const w=(cp.cells.length-1)*meta.cellSize/v/60;
@@ -2142,6 +2440,14 @@ function syncForms(){
   el("fCellSize").value=m.cellSize; el("fWalk").value=m.walkSpeed;
   el("fTarget").value=m.criticalPathTargetMin; el("fExplore").value=m.explorationFactor;
   el("fFogMin").value=m.fogMin; el("fFogMax").value=m.fogMax; el("fNotes").value=m.notes||"";
+  // ölü uç hedefi / sapma sınırı / duraklama tablosu
+  el("fMaxDetour").value = m.maxDetourMin>0 ? m.maxDetourMin : "";
+  const deadMode = m.targetDeadEnds!=null;
+  el("fTargetMode").value = deadMode ? "dead" : "loop";
+  el("rowDead").style.display = deadMode ? "flex" : "none";
+  el("fDeadTarget").value = deadMode ? m.targetDeadEnds : "";
+  el("lDeadNow").textContent = M ? "şu an "+M.deadEnds.length : "";
+  renderDwell();
   const zs=el("fZoneId"); if(zs.value!==m.zoneId) zs.value=m.zoneId;
   const lockN=doc.cells.filter(c=>c.locked).length;
   const li=el("lockInfo");
@@ -2178,11 +2484,75 @@ function doGenerate(){
 }
 function doAutoBraid(){
   const seed=(+el("fSeed").value)|0;
+  const mode=el("fTargetMode").value;
   beginEdit();
   doc.meta.seed=seed;
-  doc.meta.braid=+autoBraid(seed, LYNCH.loopTarget).toFixed(3);
-  endEdit(true);
-  toast("Örgü "+doc.meta.braid.toFixed(2)+" → ölçülen döngü %"+(M.loopRatio*100).toFixed(0),"ok");
+  if(mode==="dead"){
+    const N=Math.max(0,(+el("fDeadTarget").value)|0);
+    doc.meta.targetDeadEnds=N;
+    doc.meta.braid=+targetDeadEnds(seed, N).toFixed(3);
+    endEdit(true);
+    toast("Ölü uç hedefi "+N+" → ulaşılan "+M.deadEnds.length+" (döngü %"+(M.loopRatio*100).toFixed(0)+")",
+          M.deadEnds.length===N?"ok":"");
+  } else {
+    doc.meta.targetDeadEnds=null;
+    doc.meta.braid=+autoBraid(seed, LYNCH.loopTarget).toFixed(3);
+    endEdit(true);
+    toast("Örgü "+doc.meta.braid.toFixed(2)+" → ölçülen döngü %"+(M.loopRatio*100).toFixed(0)+" ("+M.deadEnds.length+" ölü uç)","ok");
+  }
+}
+/* Tek tıklık tarif. Ölçüldü: tek başına hiçbir işlem Lynch bandında kalmıyor —
+   yalnız Bağla döngüyü %95'e itiyor, yalnız Kırp %14'e düşürüyor (kırpma çeperdeki
+   döngüleri siler, ağaç gibi bir çekirdek kalır).
+
+   Sıra: KIRP, sonra BAĞLA↔ÖR dönüşümlü. Dönüşümlü olmasının nedeni ince ama
+   önemli: sapma derinliği KRİTİK YOLA göre ölçülür ve kenar eklemek kritik yolun
+   KENDİSİNİ kısaltır — yani örme, referans yolu daralttığı için bazı hücrelerin
+   sapmasını ARTIRABİLİR. (İlk tasarımda "kenar eklemek uzaklığı yalnız kısaltır"
+   varsayılmıştı; kritik yol sabit olmadığı için yanlış.) Bu yüzden sınır ile
+   Lynch bandı sırayla yakınsatılır ve SINIR önceliklidir — kullanıcının açıkça
+   verdiği kısıt odur; döngü oranı sapması panelde uyarı olarak görünür. */
+function applyDetourLimit(limitCells){
+  const t=trimDeepDetours(limitCells);
+  let braided=0, linked=0;
+  for(let round=0; round<4; round++){
+    const l=linkDeepDetours(limitCells); linked+=l.opened;
+    computeMetrics();
+    const sinirOK = M.maxDetour<=limitCells;
+    const bandOK  = Math.abs(M.loopRatio-LYNCH.loopTarget)<=LYNCH.loopTol;
+    if(sinirOK && bandOK) break;
+    if(M.loopRatio < LYNCH.loopTarget-0.01) braided+=braidToLoopTarget(LYNCH.loopTarget);
+    else if(sinirOK) break;                       // örmeye gerek yok, sınır tutuyor
+  }
+  const l=linkDeepDetours(limitCells); linked+=l.opened;   // son söz SINIRINDIR
+  return {voided:t.voided, korunan:t.korunan.length, koridor:t.koridor,
+          braided, linked, kalan:l.kalan};
+}
+function doDetour(mode){
+  const lim=M && M.detourLimitCells;
+  if(lim==null) return toast("Önce 'Maks sapma' değerini gir","err");
+  if(!M.cp.ok) return toast("Kritik yol kurulmadan sapma düzeltilemez","err");
+  beginEdit();
+  if(mode==="apply"){
+    const r=applyDetourLimit(lim);
+    endEdit(true);
+    toast("Sınır uygulandı — "+r.voided+" hücre çıkarıldı, "+r.braided+" kenar örüldü, "+
+          r.linked+" kısayol açıldı. Döngü %"+(M.loopRatio*100).toFixed(0)+
+          ", en derin sapma "+M.maxDetour+" hücre"+(r.kalan?" ("+r.kalan+" hücre hâlâ sınır dışı)":""),
+          r.kalan?"":"ok");
+  } else if(mode==="link"){
+    const r=linkDeepDetours(lim);
+    endEdit(true);
+    toast(r.opened+" kısayol açıldı — sınırı aşan hücre: "+r.kalan+
+          (r.kalan?" (kalanlar için 'Kırp')":""), r.kalan?"":"ok");
+  } else {
+    const r=trimDeepDetours(lim);
+    endEdit(true);
+    toast(r.voided+" hücre bölgeden çıkarıldı"+
+          (r.korunan.length? " — "+r.korunan.length+" hücre korundu (kilitli/manuel/marker'lı)"+
+            (r.koridor? " + "+r.koridor+" hücre onlara giden koridor için tutuldu":"") : ""),
+          "ok");
+  }
 }
 function resizeGrid(w,h){
   const byXY=new Map(); for(const c of doc.cells) byXY.set(c.x+","+c.y,c);
@@ -2244,7 +2614,9 @@ function adoptDoc(obj){
   const meta=Object.assign({
     zoneId:zid, zoneName:P.name, gridW:28, gridH:28, cellSize:6.0, walkSpeed:1.4,
     pivotConvention:"cell_center_floor", seed:1, braid:LYNCH.loopTarget,
-    criticalPathTargetMin:P.target, explorationFactor:1.15, fogMin:40, fogMax:80,
+    criticalPathTargetMin:P.target, explorationFactor:1.15,
+    targetDeadEnds:P.deadEnds!=null?P.deadEnds:null, maxDetourMin:P.detour!=null?P.detour:null,
+    fogMin:40, fogMax:80,
     dwell:null, criticalPath:null, zones:[], notes:"", createdAt:nowISO(), modifiedAt:nowISO()
   }, obj.meta||{});
   meta.dwell=Object.assign(defaultDwell(), meta.dwell||{});
@@ -2397,6 +2769,7 @@ function buildViewToggles(){
   const defs=[["zone","Alt-bölge renkleri"],["markers","Marker'lar"],["path","Kritik yol"],["warn","Uyarı katmanı"],
               ["locked","Kilit deseni"],["oneway","Tek yön okları"],["kind","Hücre tipi izleri"],
               ["sight","Görüş hattı ısı haritası"],["debt","Ödemeyen ölü uç işareti"],
+              ["detour","Sapma derinliği ısı haritası"],
               ["coords","Koordinat"],["ids","ID"],["opendots","Açık kenar noktaları"]];
   el("viewToggles").innerHTML=defs.map(([k,l])=>
     '<label class="chk"><input type="checkbox" data-v="'+k+'"'+(VIEW[k]?" checked":"")+'> '+esc(l)+'</label>').join("");
@@ -2437,6 +2810,16 @@ function boot(){
 
   el("bGen").onclick=doGenerate;
   el("bAutoBraid").onclick=doAutoBraid;
+  el("bDetourApply").onclick=()=>doDetour("apply");
+  el("bDetourLink").onclick=()=>doDetour("link");
+  el("bDetourTrim").onclick=()=>doDetour("trim");
+  el("fTargetMode").onchange=()=>{
+    const dead=el("fTargetMode").value==="dead";
+    el("rowDead").style.display=dead?"flex":"none";
+    if(dead && !(+el("fDeadTarget").value>0) && M) el("fDeadTarget").value=M.deadEnds.length;
+  };
+  bindMeta("fMaxDetour","maxDetourMin",v=>{ const n=+v; return n>0?clamp(n,0.1,60):null; });
+  bindMeta("fDeadTarget","targetDeadEnds",v=>{ const n=(+v)|0; return n>=0?n:null; });
   el("bUndo").onclick=undo; el("bRedo").onclick=redo;
   el("bFit").onclick=fitView;
   el("bZoomIn").onclick=()=>{view.z=clamp(view.z*1.25,4,90);invalidate();};

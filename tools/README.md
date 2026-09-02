@@ -11,6 +11,7 @@ tarayıcı aracı. Kaynak karar: **GDD §7.2**. Veri sözleşmesi: **[`SEMA.md`]
 | `test_maze_tool.js` | 45 doğrulama: üretim, kilit kuralı, şema yuvarlak-gidişi, canon denetimleri, UI. |
 | `test_maze_robustness.js` | Bozuk dosya, indirme yedeği, kopan kilitli ada, büyük ızgara performansı. |
 | `test_maze_findings.js` | Denetim bulguları regresyonu — düzeltilen kusurlar geri gelmesin. |
+| `test_maze_control.js` | Üretim kontrolleri: ölü uç hedefi, sapma sınırı, Bağla/Kırp/Ör. |
 
 **Testleri koşturmak** (Chromium + Playwright gerekir; araç kullanmak için gerekmez):
 
@@ -18,6 +19,7 @@ tarayıcı aracı. Kaynak karar: **GDD §7.2**. Veri sözleşmesi: **[`SEMA.md`]
 NODE_PATH=$(npm root -g) node tools/test_maze_tool.js
 NODE_PATH=$(npm root -g) node tools/test_maze_robustness.js
 NODE_PATH=$(npm root -g) node tools/test_maze_findings.js
+NODE_PATH=$(npm root -g) node tools/test_maze_control.js
 ```
 
 ## Çalıştırma
@@ -62,6 +64,42 @@ sürükleyip bırakmak da açar.
 - **`Shift`+sürükle** — kilit / alt-bölge / hücre tipi fırçalarında dikdörtgen alan.
 - **Ölü uç borcu paneli** — ödenmemiş ölü uçlara tek hamlede ödeme sınıfı atar; metni sonra
   tek tek yazarsın. Araç "sınıf atandı" ile "metin yazıldı"yı ayrı sayar.
+
+## İki üretim kontrolü — oyuncu deneyimini doğrudan sürmek
+
+### Ölü uç sayısı (Üretim panelinde `Hedef: Ölü uç sayısı`)
+
+Ölü uç sayısı estetik bir tercih değil, **içerik borcu bütçesidir**: her ölü uç GDD §7.1-3'e göre
+ödemek zorunda (Kırık / sembol / lore / manzara). **N ölü uç = N ödeme metni.** Araç hedefi tam
+tutturur — ikili arama, ölçülen sapma sıfır.
+
+⚠ **Bu iki hedef aynı kaldıracın iki ucudur.** Ölü uç azaldıkça döngü oranı yükselir. Ölçülen:
+%70 döngüye karşılık gelen ölü uç sayısı **Enkaz 20×20'de 29, Sığlık 42×38'de 103**. Çok azaltırsan
+labirentte **boğaz kalmaz** ve sembol kapısı gerçek geçit olamaz (doğrulayıcı "bypass edilebilir"
+der). Ön ayarlar %70 döngüye karşılık gelen sayılardır.
+
+### Maks sapma (`Rota disiplini` paneli)
+
+"Oyuncu ana rotadan ne kadar uzaklaşabilir?" — her hücrenin kritik yola uzaklığı ölçülür.
+Değer **tek yön**dür; gerçek maliyet gidiş-dönüş, yani iki katı. Örnek Enkaz'da sınır koymadan
+önce en derin sapma **37 hücre = 2,6 dk tek yön / 5,3 dk gidiş-dönüş** çıkıyordu — 17 dakikalık
+bir bölgede tek sapmada üçte biri.
+
+| Düğme | Ne yapar | Bedeli |
+|---|---|---|
+| **Sınırı uygula** | Kırp → Bağla ↔ Ör → Bağla. **Önerilen.** | Sınır önceliklidir. |
+| **Bağla** | Derin hücreye rotaya yakın kısayol açar; sapma **döngüye** döner. | Alan korunur, döngü oranı yükselir (ölçüldü: %95'e kadar). |
+| **Kırp** | Sınır ötesini bölgeden çıkarır (`void`). | Taban alanı küçülür, döngü oranı düşer (%14'e kadar — çeper döngüleri silinir). |
+
+Sıra keyfî değil: sapma **kritik yola** göre ölçülür ve kenar eklemek kritik yolun *kendisini*
+kısaltır, yani örme bazı hücrelerin sapmasını artırabilir. Bu yüzden iki kısıt dönüşümlü
+yakınsatılır. Hiçbiri kilitli/manuel hücrelere, marker taşıyan kenarlara dokunmaz ve **hiçbiri
+sembol kapısını bypass etmez**. Kırpma, korunan bir hücreyi ada bırakmamak için ona giden
+koridoru da tutar.
+
+**Bilinen gerilim:** dar sapma sınırı ile Lynch %70 bandı aynı anda tutmayabilir — her hücreyi
+rotaya yaklaştırmak grafiği zorunlu yoğunlaştırır. Araç bunu susarak çözmez; çakışmayı raporlar
+ve kaldıraçları söyler. `Görünüm → Sapma derinliği ısı haritası` ile gözle de görürsün.
 
 ## Doğrulama neyi ölçer
 

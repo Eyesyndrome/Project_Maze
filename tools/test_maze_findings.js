@@ -218,16 +218,16 @@ const ok=(n,c,x='')=>{console.log((c?'  PASS ':'  FAIL ')+n+(x?'  ['+x+']':''));
     const missing=ISSUES.some(i=>i.tag==='SEMA §6'&&i.level==='err');
     // v1 dosyası yüklenince göç etmeli
     m.props.face='n';
-    const t=serialize(doc).replace('"version": 2','"version": 1');
+    const t=serialize(doc).replace('"version": '+SCHEMA_VERSION,'"version": 1');
     const j=JSON.parse(t); for(const x of j.markers) if(x.props) delete x.props.face;
     adoptDoc(j);
     const migrated=doc.markers.filter(x=>x.type==='cizer_slot').every(x=>!!x.props.face);
-    return {hasFace, clean, missing, migrated, version:doc.version};
+    return {hasFace, clean, missing, migrated, version:doc.version, cur:SCHEMA_VERSION};
   });
   ok('yeni marker otomatik face alıyor', or.hasFace);
   ok('face varken hata yok', or.clean);
   ok('face silinince HATA veriyor', or.missing);
-  ok('v1 dosyası v2\'ye göç ediyor', or.migrated && or.version===2);
+  ok('v1 dosyası güncel şemaya göç ediyor', or.migrated && or.version===or.cur, 'v1 → v'+or.version);
 
   console.log('\n== O8(LD) — meta değerleri sınırlanmalı ==');
   const mt=await pg.evaluate(()=>{

@@ -1,4 +1,4 @@
-# `*.maze.json` — Şema (v2)
+# `*.maze.json` — Şema (v3)
 
 Bu dosya **Project Maze labirent yazım aracının** veri sözleşmesidir. Kaynak karar: **GDD §7.2**.
 Şema `tools/maze_tool.html` ile Godot importer'ı arasındaki **tek arayüzdür**; değişiklik yaparken
@@ -27,7 +27,7 @@ Bu dosya **Project Maze labirent yazım aracının** veri sözleşmesidir. Kayna
 ```jsonc
 {
   "format": "project_maze.maze",   // sabit imza — importer bunu doğrular
-  "version": 2,                    // şema sürümü
+  "version": 3,                    // şema sürümü
   "meta":    { ... },              // §2
   "nextId":  128,                  // bir sonraki serbest ID sayacı (monoton)
   "cells":   [ ... ],              // §3
@@ -52,6 +52,8 @@ Bu dosya **Project Maze labirent yazım aracının** veri sözleşmesidir. Kayna
 | `explorationFactor` | float | **Kaybolma payı.** GDD §7.3 payı kritik yol bütçesinin **ÜSTÜNE** koyar (tüm oyun için +10–15 dk) — bu yüzden **bütçe karşılaştırmasına GİRMEZ**, yalnız "beklenen medyan" satırını üretir. **1.0–1.2** bandında tutulur; varsayılan `1.15`. |
 | `fogMin`, `fogMax` | float | Sis bandı, metre. GDD sabiti: 40–80. |
 | `dwell` | object | Marker tipi → dakika. Kritik yol süre tahmininde duraklama payı. |
+| `targetDeadEnds` | int \| null | **Ölü uç hedefi** — doğrudan bir *içerik borcu bütçesi* (her ölü uç ödemek zorunda, §7.1-3). `null` ise üretim döngü oranı hedefine göre çözülür. |
+| `maxDetourMin` | float \| null | **Maks sapma** — oyuncunun ana rotadan **tek yön** uzaklaşabileceği süre (dk). Gerçek maliyet gidiş-dönüş, yani iki katı. `null`/0 = sınır yok. |
 | `criticalPath` | string[] \| null | Kritik yol için **sıralı marker ID listesi**. `null` ise araç otomatik türetir (`oyuncu_baslangic → sembol_kaynak(lar) → sembol_kapi`); bu türetme yalnız bir **alt sınırdır** — gerçek kritik yol Kırık, belge ve sahne duraklarını da gezer, o yüzden bölge tamamlandığında zincir elle kurulur. |
 | `zones` | object[] | Boyama paleti: `{ "id", "name", "color" }`. Alt-bölge/oda kimliği (Lynch katman 2). |
 | `notes` | string | Serbest tasarımcı notu. |
@@ -163,6 +165,40 @@ Sınıf, metin yazılmadan atanabilir — araç "triyaj yapıldı" ile "yazıld�
 mekanik yükü. Doğrulayıcı ayrıca **yinelenen ödeme metnini** yakalar: aynı grafitiyi iki ölü uca
 kopyalamak §7.7-3'ün "izlenebilir mikro-hikâye" şartını karşılamaz ve metriği sahte yeşile çevirir.
 
+### 5.4 İki üretim kontrolü (v3)
+
+**`targetDeadEnds` — içerik borcu bütçesi.** Ölü uç sayısı `braid` içinde monoton azaldığı için
+araç tamsayı ikili aramayla hedefi **tam** tutturur (ölçüldü: 5/10/20/40/60/80 hedeflerinin
+hepsinde sapma 0). Mükemmel labirentin ölü uç sayısından fazlası istenirse tavana oturur.
+
+> ⚠ **İki hedef aynı kaldıracın iki ucudur.** Ölü uç azaldıkça döngü oranı yükselir. Ölçülen:
+> %70 döngüye karşılık gelen ölü uç sayısı Enkaz 20×20'de **29**, Sığlık 42×38'de **103**.
+> Aşırı örülü labirentte **köprü (boğaz) kalmaz** → sembol kapısı gerçek geçit olamaz ve
+> doğrulayıcı "bypass edilebilir" hatası verir. Ön ayarlar %70 döngüye karşılık gelen sayılardır.
+
+**`maxDetourMin` — rota disiplini.** Her hücrenin kritik yola BFS uzaklığı ölçülür; en derini
+"oyuncu rotadan ne kadar uzaklaşabilir" sorusunun cevabıdır. Sınırı uygulayan üç işlem:
+
+| İşlem | Ne yapar | Yan etkisi |
+|---|---|---|
+| **Bağla** | Derin hücreden rotaya yakın komşuya duvar açar; sapma **döngüye** dönüşür. | Alan korunur, **döngü oranı yükselir** (ölçüldü: %95'e kadar). |
+| **Kırp** | Sınırın ötesindeki hücreleri bölgeden çıkarır (`kind: void`). | Taban alanı küçülür, **döngü oranı düşer** (ölçüldü: %14'e kadar — çeperdeki döngüler silinir). |
+| **Ör** | Mevcut labirenti bozmadan (yalnız ekleyerek) döngü oranını hedefe çeker. | — |
+| **Sınırı uygula** | Kırp → (Bağla ↔ Ör dönüşümlü) → Bağla. **Önerilen tarif.** | Sınır önceliklidir. |
+
+Sıra tesadüf değil: sapma derinliği **kritik yola** göre ölçülür ve kenar eklemek kritik yolun
+**kendisini kısaltır** — yani örme, referans yolu daralttığı için bazı hücrelerin sapmasını
+*artırabilir*. Bu yüzden sınır ile Lynch bandı dönüşümlü yakınsatılır ve **son söz sınırındır**.
+
+Hiçbir işlem kilitli/manuel hücrelere, marker taşıyan kenarlara dokunmaz ve **hiçbiri sembol
+kapısını bypass etmez** (her kapı için "kapı kapalıyken bir taraf" kümesi hesaplanır; bu kümeyi
+kesen kenar açılmaz). Kırpma, korunan bir hücreyi ada bırakmamak için **ona giden koridoru** da tutar.
+
+> **Bilinen gerilim:** dar sapma sınırı ile Lynch %70 bandı aynı anda sağlanamayabilir — her
+> hücreyi rotaya yaklaştırmak grafiği zorunlu olarak yoğunlaştırır. Araç bu çakışmayı susarak
+> çözmez, `info` olarak raporlar ve kaldıraçları söyler (sınırı gevşet / taban alanını küçült /
+> rotayı alanın içinden daha çok geçir).
+
 ## 6. Koordinat ve pivot sözleşmesi (`pivotConvention: "cell_center_floor"`)
 
 - Izgara: `x` doğuya (+X), `y` güneye artar.
@@ -206,6 +242,8 @@ değiştirir. Kilitli bölgeye bağlantı, mevcut donmuş açık kenarlar üzeri
 | İs lekesi ipucu ↔ sembol-kapı | ≤ 12 hücre | §4.4 "yakındaki" |
 | Marker yönelimi (`face`/`yaw`) | dolu ve duvara bakar | SEMA §5.2 |
 | Tek yön kapısı tuzağı (başlangıca dönülemiyor) | 0 | §7.1-4 |
+| Ana rotadan sapma derinliği | ≤ `meta.maxDetourMin` | araç kontrolü (aşağıda) |
+| Ulaşılan ölü uç sayısı | = `meta.targetDeadEnds` | araç kontrolü |
 
 **Süre formülü (v2'de düzeltildi):**
 
@@ -235,3 +273,6 @@ karşılanamaz. Varsayılanlar (`cellSize 6 m`, `walkSpeed 1.4 m/s`, `exploratio
   `payoff` sınıflandırıldı (§5.3); süre formülünden kaybolma payı çıkarıldı (§8);
   yeni canon denetimleri (kapı bypass, backtracking, belge↔Kırık, Çizer kavşağı, yönelim).
   v1 dosyaları otomatik göç eder.
+- **v3 (2026-09-01)** — İki tasarımcı kontrolü: `meta.targetDeadEnds` (ölü uç sayısı = içerik borcu
+  bütçesi) ve `meta.maxDetourMin` (ana rotadan maks sapma) + onları uygulayan Bağla / Kırp / Ör /
+  Sınırı uygula işlemleri (§5.4). Yalnız meta eklentisi; v2 dosyaları sorunsuz yüklenir.
