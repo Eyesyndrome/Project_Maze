@@ -4,6 +4,44 @@ Her oturum sonunda en üste yeni kayıt eklenir. Format: tarih → yapılanlar �
 
 ---
 
+## 2026-09-03 — Oturum 5: Rota ağı ve zorunlu koridorlar
+
+### Yapılanlar
+Sahibin isteği: *"En kısa rota dışında alternatif gidebilecek bütün yolları göstersin. böylece her rotanın kesiştiği ortak koridorları belirleyip hikâye ögelerini oralara koyabilirim."* **Şema değişmedi** (v3 donuk) — tamamen türetilmiş bir görünüm; dosyalar bit bit aynı kalıyor.
+
+**Rota ağı.** Kritik yol bir durak zinciri. Her parça (leg) için ileri (başlangıçtan) ve geri (hedefe) yönlü uzaklık; toplamı `en kısa + sapma payı`nı geçmeyen her hücre ağdadır. Ters graf, yön **kenar başına ters çevrilerek** kuruluyor — böylece tek yönlü kapı yanlışlıkla çift yön sayılmıyor.
+
+**Zorunlu koridor.** Hücre kapatıldığında duraklar arası yol kalmıyorsa zorunludur. Aday kümesi kritik yolla sınırlı (zorunlu hücreyi en kısa rota da geçmek zorundadır). **Kayıpsızlık kaba kuvvetle doğrulandı:** her geçilebilir hücre tek tek kapatıldı, küme birebir aynı çıktı. Zorunlu kenarlar ayrıca bağımsız Tarjan köprü analiziyle çapraz kontrol edildi.
+
+**Bypass bedeli.** İkili cevaptan daha kullanışlı sürekli ölçü: hücreyi atlamanın rotaya eklediği hücre sayısı. Katman hücreleri buna göre boyuyor — koyu = dar boğaz.
+
+### Ölçüm sahibin soracağı soruyu değiştirdi
+Örnek Enkaz'da kritik yolun **114 hücresinden yalnız 9'u gerçekten zorunlu.** %70 döngülü bir labirentte sert garanti nadirdir — her döngü bir alternatif demektir. Ama sapma payı 8 hücreyken **102 hücre daha pratikte zorunlu** (atlama bedeli payı aşıyor) → 111 hücrelik gerçek yerleşim havuzu. Sahada kullanılacak sayı bypass bedelidir, ikili zorunluluk değil.
+
+### Bağımsız denetçi ajanın bulguları (hepsi uygulandı)
+1. **Çatal tanımım yanlıştı.** "Ağda ≥3 ağ-komşusu" ızgarada birleşme noktalarını çatal sayıyor, gerçek ayrılmaları kaçırıyordu. Doğrusu: **ileri yönde ≥2 makul devam**. Test, eski tanımın somut bir çatalı (iki eşit kollu halka) tamamen kaçırdığını gösteriyor. Bu ölçü §5.2 için kritik: yanlış dönülecek yön yoksa Çizer'in sahte işareti işlevsizdir — panel artık **alternatifsiz parça** da sayıyor.
+2. **Zorunlu hücreden GEÇMEK, işareti GÖRMEK değil.** İşaret `face` duvarına asılıdır (SEMA §5.2); yürüme yönüne sırtı dönükse oyuncu dönmeden görmez. Yeni ölçü **örnek dosyada gerçek bir kusur buldu** (`m1168`, güneye yürüyene kuzey duvarda) — düzeltildi. Yan duvar sorun değil, yalnız tam ters yön sayılıyor.
+3. **Rota ağı bulguları doğrulayıcıya girmiyor.** Hiçbiri canon ihlali değil, hepsi imkân. Ayrıca ödül marker'ları §7.1-3 gereği **ölü ucu öder** ve ölü uç tanım gereği hiç zorunlu olmaz → "belge/kaynak zorunlu olmalı" denetimi %100 yanlış pozitif üretirdi. Yazmadım.
+4. **Sapma payı şemaya alınmadı** ve hiçbir doğrulama satırı ona bakmıyor — eşik olsaydı aynı dosya iki makinede iki farklı hata listesi verirdi. Gerekçe `SEMA.md` §5.1.2'de kayıtlı; test bunu kilitliyor.
+5. **Otomatik zincir uyarısı.** `meta.criticalPath` boşken zincir alt sınırdır (SEMA §2) — panel ağın o eksik zincire göre ölçüldüğünü üstte söylüyor.
+6. **§7.1-3 gerilimi** README'ye ve panele yazıldı: lore'u zorunlu koridora taşımak bir ölü ucun ödemesini geri alır. Doğru ayrım: **kesilemez** öğeler (kronolojinin 3. belgesi, opsiyonel döngü) zorunlu/yakın-zorunlu olmalı; **ödül** sınıfı öğeler ölü uçta kalmalı. Araç bu kararı sahibin yerine vermiyor.
+
+Denetçinin "kaba kuvvet yerine dominator kullan" önerisi **bilerek alınmadı**: dominator `bypass` bedelini vermiyor, o ise ikili zorunluluktan daha kullanışlı çıktı. Kaba kuvvet talep üzerine koşuyor ve 42×38'de ~210 ms.
+
+### Kendi kusurum
+Segmentleri kritik yol **sırasından** türetiyordum; zincir aynı koridoru iki kez yürüdüğünde tek koridoru birkaç parça gösteriyordu (9 hücre → "6 koridor", en uzunu 7 diye çelişkili). Bağlantılı bileşenlere çevrildi.
+
+### Test durumu
+`test_maze_tool` 47 · `test_maze_robustness` 13 · `test_maze_findings` 38 · `test_maze_control` 40 · **`test_maze_routenet` 45** = **183 doğrulama, 0 hata.**
+`ornek.maze.json`: 0 hata / 0 uyarı / 1 bilgi, arkada kalan işaret 0, yuvarlak-gidiş bit bit aynı.
+
+### Sıradaki
+- **[SAHİBİ] Aracı kullan.** Oturum 3'teki 6 açık karar duruyor (en önemlisi: landmark marker tipi = GDD kararı, ve `walkSpeed` doğrulaması).
+- **[BEKLEMEDE] Godot importer** — Godot MCP gelmeden başlama. Sözleşme: `tools/SEMA.md` v3.
+
+### Yeni açık kayıt (denetçinin yan bulgusu, bu oturumda çözülmedi)
+`SEMA.md` §8 tablosu "Çizer yuvası kavşakta (**derece ≥ 2**)" diyor, aracın kendi `junctions` tanımı ise **derece ≥ 3**. GDD §5.2 "yanlış **kavşakta**" der. Bu tutarsızlık rota ağı özelliğinden önce de vardı; hangisinin canon olduğu sahibin kararı — düzeltilirse hem SEMA hem doğrulayıcı birlikte güncellenmeli.
+
 ## 2026-09-01 — Oturum 4: İki tasarımcı kontrolü (ölü uç sayısı + maks sapma)
 
 ### Yapılanlar
