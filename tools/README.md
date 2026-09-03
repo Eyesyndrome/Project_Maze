@@ -101,6 +101,61 @@ koridoru da tutar.
 rotaya yaklaştırmak grafiği zorunlu yoğunlaştırır. Araç bunu susarak çözmez; çakışmayı raporlar
 ve kaldıraçları söyler. `Görünüm → Sapma derinliği ısı haritası` ile gözle de görürsün.
 
+## Rota ağı ve zorunlu koridorlar — hikâye öğesi nereye konur
+
+`Rota ağı ve zorunlu koridorlar` paneli (sağ sütun) iki soruyu cevaplar:
+
+**"En kısa rota dışında oyuncu nereden gidebilir?"** → **Rota ağı.** Kritik yol bir durak
+zinciridir; her parça için başlangıçtan ileri ve hedefe geri uzaklıklar hesaplanır. Toplamı
+`en kısa + sapma payı`nı geçmeyen her hücre ağdadır — yani oyuncunun makul olarak geçebileceği
+bir yürüyüşün üstündedir. **Sapma payı leg (parça) başınadır**; panel zincirin toplamını dakika
+olarak da yazar. Pay 0 = yalnız en kısa rotalar.
+
+**"Her rotanın kesiştiği ortak koridor nerede?"** → **Zorunlu koridor.** Bir hücre zorunludur
+⟺ kapatıldığında duraklar arasında yol kalmaz. Oyuncu hangi yoldan giderse gitsin oradan geçer.
+Hikâye öğesi için garanti yer budur; panel bunları **koridor** olarak gruplar ve marker taşımayan
+`boş` olanları ayrıca sayar — yerleşim adayları onlardır. `Boş koridora git` düğmesi sırayla gezer.
+
+Zorunluluk ikili bir cevap; asıl kullanışlı ölçü **bypass bedeli**: hücreyi atlamanın rotaya
+eklediği hücre sayısı. Zorunlu hücrede sonsuz, boğazda büyük, gevşek koridorda küçüktür.
+`Zorunlu koridor` katmanı hücreleri bu bedele göre boyar — koyu = dar boğaz. Bedeli sapma payını
+aşan hücre **pratikte zorunludur**: onu atlayan hiçbir rota paya sığmaz.
+
+**Ölçüldü (örnek Enkaz bölgesi, 20×20):** kritik yolun 114 hücresinden yalnız **9'u gerçekten
+zorunlu** — %70 döngülü bir labirentte sert garanti nadirdir, çünkü her döngü bir alternatif
+demektir. Sapma payı 8 hücreyken bunlara **102 hücre daha** katılır (onları atlamanın bedeli
+payı aşar) → **111 hücre pratikte garanti**. Sahada kullanacağın sayı budur. En pahalı bypass
+bu bölgede 112 hücre. Analiz 42×38'de ~210 ms sürer ve yalnız panel açıkken (ya da katman
+yanıkken) koşar.
+
+### Panelin söylediği üç şey daha
+
+- **Çatal** = oyuncunun önünde gerçekten **iki farklı devam** bulduğu hücre. §5.2 sahte işareti
+  ancak böyle bir yerde saptırır — yanlış dönülecek yön yoksa Çizer işlevsizdir. Panel ayrıca
+  **alternatifsiz parça** sayar: ağı kritik yolla aynı olan leg'de P1/P2 yerleştirmenin anlamı yok.
+- **Arkada kalan işaret.** Zorunlu hücreden *geçmek* işareti *görmek* değildir: işaret `face`
+  duvarına asılıdır (SEMA §5.2) ve yürüme yönüne sırtını dönmüşse oyuncu dönmeden onu görmez.
+  Panel bunları sayar, tuval üstünde sarı halkayla işaretler. Yan duvar sorun değildir (geçerken
+  görülür), yalnız **tam ters** yön sayılır.
+- **Otomatik zincir uyarısı.** `meta.criticalPath` boşsa zincir başlangıç → kaynak → kapı diye
+  türetilir; SEMA §2 bunu **alt sınır** ilan eder. Ağ o eksik zincire göre ölçülmüş olur — panel
+  bunu üstte söyler. Kırık ve sahne duraklarını `Kritik yol durakları` panelinden elle ekle.
+
+### Canon gerilimi — araç bu kararı senin yerine vermez
+
+GDD §7.1-3: *"Her ölü uç ödemelidir: Kırık, sembol, lore veya manzara."* Lore'u zorunlu koridora
+taşımak bir ölü ucun ödemesini geri alır ve `Ölü uç borcu` metriğini bozar. Doğru ayrım kaynağa
+göredir: **kesilemez** öğeler (kronolojinin 3. belgesi, opsiyonel döngü — §7.3) zorunlu ya da
+yakın-zorunlu olmalı; **ödül** sınıfı öğeler ölü uçta kalmalı, orası onların işidir.
+
+Bu yüzden rota ağı bulguları **doğrulama listesine girmez** — hiçbiri canon ihlali değil, hepsi
+birer imkândır. Sapma payı da bilerek şemaya alınmadı (`SEMA.md` §5.1.2): bir doğrulama eşiği
+olsaydı aynı dosya iki makinede iki farklı hata listesi verirdi.
+
+Son bir uyarı: `Sapma derinliği` katmanı bilinçli olarak **yönsüz** ölçer (sapmanın maliyeti
+gidiş-dönüştür), rota ağı ise **yönlüdür**. Tek yönlü kapı varsa ikisi aynı hücreyi farklı boyar;
+bu bir hata değil, iki farklı sorunun cevabıdır.
+
 ## Doğrulama neyi ölçer
 
 Araç **GDD'deki sabitleri ölçer, yenisini icat etmez.** Ölçülenlerin tam listesi ve kaynak paragrafları
@@ -165,6 +220,12 @@ Dürüst sınırlar — bunları araç ölçmez, sen bilmelisin:
   işaretlenip elle kurulur.
 - **Koridor genişliği tek değer.** `cellSize` bölge geneli için tektir; §9.5'in "dar servis ↔
   geniş avlu" kontrastı yalnız `room` etiketiyle temsil edilir, metrik olarak ölçülmez.
+- **Rota ağı "yürüyüş" ölçer, basit yol değil.** `ileri + geri ≤ en kısa + pay` testi bir
+  yürüyüş garanti eder; ileri ve geri parça aynı koridoru kullanabilir. §7.3 backtracking'i
+  yasakladığı için böyle bir "alternatif" sahada sahte olabilir — pay büyüdükçe risk artar.
+- **Zorunluluk ≠ görülme, tersi de.** Araç yalnız *tam ters* yöne bakan işareti yakalar; ışık,
+  sis yoğunluğu, koridor genişliği ve oyuncunun nereye baktığı ölçülmez. Ağ dışındaki bir öğe
+  "hiç görülmez" demek değildir — oyuncu oraya gitmeyi seçebilir.
 
 ## Sıradaki adım: Godot importer
 

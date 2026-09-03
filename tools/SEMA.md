@@ -142,6 +142,21 @@ Denetim, aracın GDD'de bulunmayan iki eşik daha kullandığını ortaya çıka
   yarıçapından ödünçtür**; §5.1c bu mesafeyi tanımlamaz.
 - **İs lekesi ipucu ↔ sembol-kapı ≤ 12 hücre.** §4.4 "yakındaki scripted is lekesi" der, sayı vermez.
 
+### 5.1.2 Şemaya BİLEREK alınmayan araç ayarı: rota ağı sapma payı
+
+"Rota ağı" analizinin **sapma payı** (`ROUTE_SLACK`, hücre) `.maze.json`'a **yazılmaz**;
+`localStorage` içinde yaşar ve dosyayla birlikte taşınmaz.
+
+Gerekçe (denetimde çıktı): eğer bu sayı bir doğrulama eşiği olsaydı, aynı dosya iki makinede
+iki farklı hata listesi üretirdi — sözleşme dosyadır, tarayıcı durumu değil. Bu yüzden kural
+şudur: **sapma payı yalnız görselleştirmeyi etkiler; `validate()` içindeki hiçbir satır ona
+bakmaz.** Rota ağı bulguları (boş zorunlu koridor, arkada kalan işaret, alternatifsiz parça)
+doğrulama listesine değil **yalnız Rota ağı paneline** yazılır; ikisi de birer *imkân*
+raporudur, canon ihlali değil.
+
+Bu ayar bir gün gerçekten bir canon eşiği olursa, `meta.routeSlackCells` olarak şemaya
+girer ve §5.1.1 statüsüne (onay bekleyen araç eklentisi) yazılır. İkisi arası yoktur.
+
 ### 5.2 Marker yönelimi (v2) — importer için ZORUNLU
 
 Godot importer `*_generated.tscn`'i her rebuild'de sıfırdan kurar; sahnede elle verilen rotasyon
@@ -276,3 +291,6 @@ karşılanamaz. Varsayılanlar (`cellSize 6 m`, `walkSpeed 1.4 m/s`, `exploratio
 - **v3 (2026-09-01)** — İki tasarımcı kontrolü: `meta.targetDeadEnds` (ölü uç sayısı = içerik borcu
   bütçesi) ve `meta.maxDetourMin` (ana rotadan maks sapma) + onları uygulayan Bağla / Kırp / Ör /
   Sınırı uygula işlemleri (§5.4). Yalnız meta eklentisi; v2 dosyaları sorunsuz yüklenir.
+- **(şema değişmedi, 2026-09-03)** — "Rota ağı ve zorunlu koridorlar" analizi eklendi. Tamamen
+  türetilmiş bir görünümdür: yeni alan yok, `meta.version` artmadı, dosyalar bit bit aynı kalır.
+  Tek ayarı (`ROUTE_SLACK`) bilinçli olarak şema DIŞINDA tutuldu — gerekçe §5.1.2.

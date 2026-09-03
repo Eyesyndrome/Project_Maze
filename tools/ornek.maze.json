@@ -52,7 +52,7 @@
     ],
     "notes": "Öğretim bölgesi. Sprey / silme / pusula / kayıt burada öğretilir. Çizer YOKTUR; Watcher yalnız son anda tek uzak siluet olarak görülür (GDD §7.4).",
     "createdAt": "2026-09-02T08:54:30.180Z",
-    "modifiedAt": "2026-09-02T08:54:30.180Z"
+    "modifiedAt": "2026-09-03T07:10:12.329Z"
   },
   "nextId": 1170,
   "cells": [
@@ -1227,7 +1227,7 @@
     {"id":"m1165","type":"sembol_kapi","cell":null,"edge":"e1144","label":"Enkaz → Sığlık (öğretim kapısı)","props":{"symbolId":"sym_enkaz"}},
     {"id":"m1166","type":"sembol_kaynak","cell":"c378","edge":null,"label":"Sembol — sönmüş kalorifer panosu","props":{"symbolId":"sym_enkaz","face":"n"}},
     {"id":"m1167","type":"is_lekesi_ipucu","cell":"c341","edge":null,"label":"Kapıya hizalanan is lekesi","props":{"face":"s"}},
-    {"id":"m1168","type":"belge","cell":"c220","edge":null,"label":"Duvar yazısı — kule hizası","props":{"tur":"grafiti","face":"n"}},
+    {"id":"m1168","type":"belge","cell":"c220","edge":null,"label":"Duvar yazısı — kule hizası","props":{"tur":"grafiti","face":"w"}},
     {"id":"m1169","type":"watcher_spawn","cell":"c15","edge":null,"label":"Tek uzak siluet — sis sınırında","props":{"yaw":180}}
   ]
 }

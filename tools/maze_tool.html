@@ -305,6 +305,22 @@ button:disabled{opacity:.4;cursor:not-allowed}
 
     <div class="panel collapsed" id="pTempo"><h2>Tempo şeridi (§7.7-2)</h2><div class="body" id="tempoBody"></div></div>
 
+    <div class="panel collapsed" id="pNet"><h2>Rota ağı ve zorunlu koridorlar</h2><div class="body">
+      <div class="row wide"><label>Sapma payı</label>
+        <input type="number" id="fSlack" step="1" min="0" max="400" class="grow"></div>
+      <p class="hint">Bir rota en kısasından en çok bu kadar <b>hücre</b> uzun olabilir ve
+      hâlâ "oyuncunun gidebileceği rota" sayılır. <span id="slackMin"></span><br>
+      <b>0</b> = yalnız en kısa rotalar. Büyüttükçe ağ genişler.</p>
+      <div id="netStats"></div>
+      <div class="btns" style="margin-top:6px">
+        <button class="pri" id="bNetShow">Katmanları aç</button>
+        <button id="bNetEmpty">Boş koridora git</button>
+      </div>
+      <div class="sep"></div>
+      <div id="netSegs" class="list"></div>
+      <p class="hint" id="netHint"></p>
+    </div></div>
+
     <div class="panel collapsed" id="pDebt"><h2>Ölü uç borcu</h2><div class="body" id="debtBody"></div></div>
 
   </aside>
@@ -901,6 +917,50 @@ function bfsPath(startId, goalId){
   }
   return null;
 }
+/* Ters komşuluk — "hangi hücrelerden BURAYA varılabilir?" sorusu için.
+   Yön kenar başına ters çevrilip grafın İÇİNE gömülür; böylece ters BFS'te ayrıca
+   canTraverse çağırmak gerekmez ve tek yönlü kapı yanlışlıkla çift yön sayılmaz. */
+function reverseAdjacency(){
+  if(ix._radj) return ix._radj;
+  const radj=new Map();
+  for(const c of doc.cells) if(isPass(c)) radj.set(c.id, []);
+  for(const e of doc.edges){
+    if(!edgeOpen(e)) continue;
+    const [A,B]=edgeCells(e);
+    if(!radj.has(A.id) || !radj.has(B.id)) continue;
+    if(canTraverse(e,A)) radj.get(B.id).push({to:A.id, e});   // A→B geçilirse ters grafta B→A
+    if(canTraverse(e,B)) radj.get(A.id).push({to:B.id, e});
+  }
+  return ix._radj=radj;
+}
+/* Yönlü BFS uzaklık tablosu. blockCell / blockEdge geçici engeldir: "bu hücre (ya da
+   kenar) kapalıyken rota ne olur?" sorusu zorunluluk analizinin tamamıdır. */
+function bfsDist(startId, blockCell, blockEdge){
+  const adj=adjacency();
+  const dist=new Map([[startId,0]]); const q=[startId];
+  for(let h=0;h<q.length;h++){
+    const u=q[h], uc=cellById(u), du=dist.get(u);
+    for(const {to,e} of (adj.get(u)||[])){
+      if(dist.has(to) || to===blockCell || e.id===blockEdge) continue;
+      if(!canTraverse(e, uc)) continue;
+      dist.set(to, du+1); q.push(to);
+    }
+  }
+  return dist;
+}
+/* Aynısı ters yönde: her hücreden HEDEFE olan yönlü uzaklık. */
+function bfsDistTo(goalId, blockCell, blockEdge){
+  const radj=reverseAdjacency();
+  const dist=new Map([[goalId,0]]); const q=[goalId];
+  for(let h=0;h<q.length;h++){
+    const u=q[h], du=dist.get(u);
+    for(const {to,e} of (radj.get(u)||[])){
+      if(dist.has(to) || to===blockCell || e.id===blockEdge) continue;
+      dist.set(to, du+1); q.push(to);
+    }
+  }
+  return dist;
+}
 /* Görüş hattı (§7.1-1 / §7.1-5): her hücreden 4 eksende kesintisiz açık koşu.
    Sis 40–80 m olduğu için "sis mesafesi içinde ipucu görünür" kuralının ölçülebilir
    vekili budur. Uzun düz koşu yalnız borç (60 sn) değil, KAYNAK'tır: manzara /
@@ -939,6 +999,172 @@ function computeDetour(adj, cpCells){
     for(const {to} of (adj.get(u)||[])) if(!depth.has(to)){ depth.set(to, du+1); q.push(to); }
   }
   return depth;
+}
+
+/* ==========================================================================
+   ROTA AĞI (§7.1-3 döngüler + §7.3 kritik yol)
+
+   İki soru, tek analiz:
+   (a) "En kısa rota dışında oyuncu nereden gidebilir?"  → AĞ
+   (b) "Her rotanın kesiştiği ortak koridor nerede?"      → ZORUNLU KORİDOR
+
+   AĞ: kritik yol bir DURAK ZİNCİRİdir. Her leg (s→t) için ileri uzaklık f ve
+   hedefe uzaklık b hesaplanır; f[c]+b[c] <= D+pay olan her hücre, oyuncunun
+   s'den t'ye giderken geçebileceği bir yürüyüşün üstündedir. Leg'lerin birleşimi
+   ağdır. (Yürüyüş; basit yol değil — oyuncu geri de dönebilir. Bu bilinçli:
+   ölçülen şey "oyuncu buradan gidebilir mi", "en zarif rota mı" değil.)
+
+   ZORUNLU: c zorunludur ⟺ c kapatıldığında s→t yolu kalmaz. Aday kümesi kritik
+   yolun hücreleridir; dışarıda zorunlu hücre KALAMAZ, çünkü zorunlu bir hücreyi
+   en kısa rota da geçmek zorundadır (en kısa rota da bir rotadır).
+
+   Zorunlu OLMAYAN hücre için `bypass` = onu atlamanın hücre bedeli. Bedeli sapma
+   payından büyükse hücre "pratikte zorunlu"dur: makul her rota oradan geçer.
+   ========================================================================== */
+let ROUTE_SLACK = 8;   // sapma payı (hücre). GÖRÜNTÜLEME parametresi — SEMA'ya girmez.
+let NET = null;        // önbellek; computeMetrics() geçersiz kılar
+function routeNet(){ if(!NET) NET=computeRouteNet(); return NET; }
+
+function computeRouteNet(){
+  const out={ok:false, err:null, slack:Math.max(0, ROUTE_SLACK|0),
+             network:new Set(), mandatory:new Set(), mandEdges:new Set(),
+             practical:new Set(), bypass:new Map(), bypassLeg:new Map(),
+             forks:[], behind:[], travel:new Map(), segments:[], legs:[],
+             netCells:0, altRatio:0, coverage:0, runs:0};
+  if(!M){ out.err="Metrikler hesaplanmadı."; return out; }
+  const cp=M.cp;
+  if(!cp || !cp.ok){ out.err=(cp&&cp.err)||"Kritik yol kurulmadan rota ağı ölçülemez."; return out; }
+  const pts=cp.waypoints, slack=out.slack, legs=[];
+
+  for(let i=0;i<pts.length-1;i++){
+    const s=pts[i].c.id, t=pts[i+1].c.id;
+    const path=bfsPath(s,t);
+    const f=bfsDist(s), b=bfsDistTo(t), D=f.get(t);
+    if(!path || D==null){ out.err="Duraklar arasında yol yok."; return out; }
+    let n=0;
+    for(const [id,fd] of f){
+      const bd=b.get(id); if(bd==null) continue;
+      if(fd+bd <= D+slack){ out.network.add(id); n++; }
+    }
+    legs.push({s,t,D,path,f,b,from:pts[i],to:pts[i+1],netCells:n});
+  }
+  out.legs=legs;
+
+  // --- zorunluluk + bypass bedeli (leg başına bir BFS / aday hücre)
+  for(const L of legs){
+    for(const id of L.path){
+      if(id===L.s || id===L.t){ out.mandatory.add(id); out.bypass.set(id, Infinity); continue; }
+      const d2=bfsDist(L.s, id).get(L.t); out.runs++;
+      if(d2==null){ out.mandatory.add(id); out.bypass.set(id, Infinity); continue; }
+      const prev=out.bypass.get(id), d=d2-L.D;
+      if(prev===Infinity) continue;                 // başka leg'de zaten zorunlu
+      out.bypass.set(id, (prev||0) + d);            // yolculuk bedeli: leg bedelleri toplanır
+      out.bypassLeg.set(id, Math.max(out.bypassLeg.get(id)||0, d));
+    }
+  }
+  // "Pratikte zorunlu": onu atlayan hiçbir rota sapma payına sığmaz. Pay LEG BAŞINA
+  // tanımlı olduğu için kıyas da leg başına en büyük bedelle yapılır (toplamla değil).
+  for(const id of out.mandatory) out.practical.add(id);
+  for(const [id,v] of out.bypassLeg) if(v>slack) out.practical.add(id);
+
+  // --- zorunlu kenar: ancak İKİ UCU DA zorunlu olan kenar zorunlu olabilir
+  //     (kenarı geçmek zorundaysan iki ucunu da ziyaret etmek zorundasın)
+  for(const L of legs){
+    for(let i=1;i<L.path.length;i++){
+      const a=cellById(L.path[i-1]), b2=cellById(L.path[i]); if(!a||!b2) continue;
+      if(!out.mandatory.has(a.id) || !out.mandatory.has(b2.id)) continue;
+      const e=edgeBetween(a.x,a.y,b2.x,b2.y); if(!e || out.mandEdges.has(e.id)) continue;
+      if(bfsDist(L.s, null, e.id).get(L.t)==null) out.mandEdges.add(e.id);
+      out.runs++;
+    }
+  }
+
+  // --- çatal: İLERİ yönde ≥2 makul devamı olan hücre.
+  //     (Ağ komşusu saymak yanlıştı: ızgarada komşuların bir kısmı hep GERİYE bakar,
+  //      "birleşme" noktalarını çatal diye sayıyordu. Ölçülmek istenen, oyuncunun
+  //      önünde gerçekten iki farklı devam bulduğu yerdir — §5.2 sahte işareti
+  //      ancak böyle bir yerde saptırır.)
+  const forkSet=new Set();
+  for(const L of legs){
+    for(const [id,fd] of L.f){
+      const bd=L.b.get(id); if(bd==null || fd+bd > L.D+slack) continue;
+      const c=cellById(id); if(!c) continue;
+      let k=0;
+      for(const n of neighbors(c)){
+        const nf=L.f.get(n.id), nb=L.b.get(n.id);
+        if(nf==null || nb==null || nf!==fd+1 || nf+nb > L.D+slack) continue;
+        const e=edgeBetween(c.x,c.y,n.x,n.y);
+        if(e && canTraverse(e,c)) k++;
+      }
+      if(k>=2) forkSet.add(id);
+    }
+  }
+  out.forks=[...forkSet].map(cellById).filter(Boolean);
+
+  // --- GEÇİŞ YÖNÜ ve "arkada kalan işaret".
+  //     Zorunlu hücreden geçmek işareti GÖRMEK demek değildir: SEMA §5.2'ye göre
+  //     işaret `props.face` duvarına asılıdır, görünen yüzü hücreye bakar. Oyuncu
+  //     yürüme yönü t iken face·t < 0 olan duvar ARKADA kalır — dönmeden görülmez.
+  const travel=new Map();                                  // hücre → çıkış yönleri kümesi
+  for(const L of legs){
+    for(const [id,fd] of L.f){
+      const bd=L.b.get(id); if(bd==null || fd+bd > L.D+slack) continue;
+      const c=cellById(id); if(!c) continue;
+      for(const n of neighbors(c)){
+        const nf=L.f.get(n.id), nb=L.b.get(n.id);
+        if(nf==null || nb==null || nf!==fd+1 || nf+nb > L.D+slack) continue;
+        const e=edgeBetween(c.x,c.y,n.x,n.y);
+        if(!e || !canTraverse(e,c)) continue;
+        if(!travel.has(id)) travel.set(id,[]);
+        travel.get(id).push({dx:n.x-c.x, dy:n.y-c.y});
+      }
+    }
+  }
+  out.travel=travel;
+  for(const mk of doc.markers){
+    if(!NEEDS_FACE.has(mk.type)) continue;
+    const c=mk.cell?cellById(mk.cell):null;
+    if(!c || !out.network.has(c.id)) continue;
+    const d=FACE_DIRS.find(x=>x.id===((mk.props||{}).face||""));
+    const dirs=travel.get(c.id);
+    if(!d || !dirs || !dirs.length) continue;
+    if(dirs.every(t => d.dx*t.dx + d.dy*t.dy < 0)) out.behind.push({m:mk, c});
+  }
+
+  // --- zorunlu koridorlar: zorunlu kümenin BAĞLANTILI BİLEŞENLERİ.
+  //     (Kritik yol sırasına göre bölmek yanlıştı: zincir aynı koridoru iki kez
+  //      yürüdüğünde tek koridoru birkaç parça gösteriyordu.)
+  const done=new Set();
+  for(const sid of out.mandatory){
+    if(done.has(sid)) continue;
+    const comp=[]; const q=[sid]; done.add(sid);
+    for(let h=0;h<q.length;h++){
+      const c=cellById(q[h]); if(!c) continue;
+      comp.push(c);
+      for(const n of neighbors(c)){
+        if(done.has(n.id) || !out.mandatory.has(n.id)) continue;
+        const e=edgeBetween(c.x,c.y,n.x,n.y);
+        if(e && edgeOpen(e)){ done.add(n.id); q.push(n.id); }
+      }
+    }
+    if(!comp.length) continue;
+    let markers=0;
+    for(const c of comp) markers += (ix.markByCell.get(c.id)||[]).length;
+    const cx=comp.reduce((a,c)=>a+c.x,0)/comp.length, cy=comp.reduce((a,c)=>a+c.y,0)/comp.length;
+    let mid=comp[0], bd=1e9;
+    for(const c of comp){ const d=Math.hypot(c.x-cx,c.y-cy); if(d<bd){bd=d; mid=c;} }
+    out.segments.push({cells:comp, len:comp.length, markers,
+                       min: comp.length*M.secPerCell/60, mid});
+  }
+  out.segments.sort((a,b)=>b.len-a.len);
+
+  out.maxBypass=0;
+  for(const v of out.bypassLeg.values()) if(Number.isFinite(v) && v>out.maxBypass) out.maxBypass=v;
+  out.netCells=out.network.size;
+  out.altRatio = cp.uniqueCells ? out.netCells/cp.uniqueCells : 0;
+  out.coverage = M.scopeTotal ? out.netCells/M.scopeTotal : 0;
+  out.ok=true;
+  return out;
 }
 
 // Köprüler (bridge) — Tarjan, iteratif. Köprü OLMAYAN kenarlar döngü üstündedir.
@@ -981,7 +1207,7 @@ let M = null;   // son hesaplanan metrik seti
 
 function computeMetrics(){
   const {nodes, adj} = buildGraph();
-  ix._adj = adj;
+  ix._adj = adj; ix._radj = null; NET = null;
 
   const deg = new Map();
   for(const c of nodes) deg.set(c.id, (adj.get(c.id)||[]).length);
@@ -1472,7 +1698,8 @@ function validate(){
 const cv=el("cv"); const ctx=cv.getContext("2d");
 const view={z:26, px:40, py:40};
 const VIEW={zone:true, markers:true, path:true, warn:true, locked:true, oneway:true,
-            coords:false, ids:false, opendots:false, kind:true, sight:false, debt:false, detour:false};
+            coords:false, ids:false, opendots:false, kind:true, sight:false, debt:false, detour:false,
+            net:false, must:false};
 let hover={cell:null, edge:null};
 let sel={t:null, id:null};      // seçim: cell | edge | marker
 let flash={t:null, id:null, until:0};
@@ -1559,6 +1786,61 @@ function draw(){
       if(lim!=null && d>lim){ ctx.fillStyle="rgba(248,81,73,0.34)"; }
       else { ctx.fillStyle="rgba(210,153,34,"+(0.10+0.30*(d/mx)).toFixed(3)+")"; }
       ctx.fillRect(S(x),T(y),z,z);
+    }
+  }
+
+  // --- rota ağı: en kısa rota DIŞINDA oyuncunun gidebileceği her hücre
+  if((VIEW.net||VIEW.must) && M && M.cp && M.cp.ok){
+    const N=routeNet();
+    if(N.ok){
+      if(VIEW.net){
+        for(let y=y0;y<=y1;y++) for(let x=x0;x<=x1;x++){
+          const c=cellAt(x,y); if(!isPass(c) || !N.network.has(c.id)) continue;
+          ctx.fillStyle="rgba(163,113,247,0.20)"; ctx.fillRect(S(x),T(y),z,z);
+        }
+        // çatal: rotanın gerçekten AYRILDIĞI karar noktası
+        if(z>=12){
+          ctx.fillStyle="#a371f7";
+          for(const c of N.forks){
+            if(c.x<x0||c.x>x1||c.y<y0||c.y>y1) continue;
+            ctx.beginPath(); ctx.arc(S(c.x)+z/2, T(c.y)+z/2, Math.max(1.6,z*0.075), 0, 7); ctx.fill();
+          }
+        }
+      }
+      if(VIEW.must){
+        // Sürekli ölçek: renk yoğunluğu = BYPASS BEDELİ ("boğaz ne kadar dar").
+        // İkili zorunlu/değil ayrımı bu soruyu yeterince cevaplamıyordu.
+        const mb=Math.max(1, N.maxBypass);
+        for(let y=y0;y<=y1;y++) for(let x=x0;x<=x1;x++){
+          const c=cellAt(x,y); if(!isPass(c)) continue;
+          if(N.mandatory.has(c.id)) ctx.fillStyle="rgba(247,120,186,0.38)";
+          else{
+            const v=N.bypassLeg.get(c.id);
+            if(!(v>0)) continue;
+            ctx.fillStyle="rgba(247,120,186,"+(0.05+0.22*Math.min(1,v/mb)).toFixed(3)+")";
+          }
+          ctx.fillRect(S(x),T(y),z,z);
+        }
+        // arkada kalan işaret: zorunlu hücrede ama geçiş yönüne SIRTINI dönmüş
+        if(z>=14){
+          ctx.strokeStyle="#d29922"; ctx.lineWidth=Math.max(1.4,z*0.06);
+          for(const {c} of N.behind){
+            if(c.x<x0||c.x>x1||c.y<y0||c.y>y1) continue;
+            ctx.beginPath(); ctx.arc(S(c.x)+z/2, T(c.y)+z/2, z*0.36, 0, 7); ctx.stroke();
+          }
+        }
+        // zorunlu kenar: her rotanın geçmek ZORUNDA olduğu kapı/eşik
+        ctx.strokeStyle="#f778ba"; ctx.lineWidth=Math.max(2,z*0.10);
+        for(const eid of N.mandEdges){
+          const e=edgeById(eid); if(!e) continue;
+          const [A,B]=edgeCells(e); if(!A||!B) continue;
+          if(A.x<x0-1||A.x>x1+1||A.y<y0-1||A.y>y1+1) continue;
+          ctx.beginPath();
+          if(A.y===B.y){ const gx=Math.max(A.x,B.x); ctx.moveTo(S(gx),T(A.y)); ctx.lineTo(S(gx),T(A.y)+z); }
+          else { const gy=Math.max(A.y,B.y); ctx.moveTo(S(A.x),T(gy)); ctx.lineTo(S(A.x)+z,T(gy)); }
+          ctx.stroke();
+        }
+      }
     }
   }
 
@@ -1832,7 +2114,7 @@ function redo(){ if(!redoStack.length) return toast("İleri alınacak adım yok"
 function refreshLight(){ reindex(); invalidate(); }
 function refreshAll(){
   reindex(); computeMetrics(); validate();
-  renderMetrics(); renderIssues(); renderInspector(); renderZones(); renderPath(); renderDebt(); renderDetour(); syncForms(); updateHeader();
+  renderMetrics(); renderIssues(); renderInspector(); renderZones(); renderPath(); renderDebt(); renderDetour(); renderNet(); syncForms(); updateHeader();
   autosave(); invalidate();
 }
 
@@ -2206,6 +2488,88 @@ function renderDetour(){
        '<span class="tg">'+(M.scopeTotal?("%"+(over/M.scopeTotal*100).toFixed(1)):"")+'</span></div>';
   }
   box.innerHTML=h;
+}
+/* Rota ağı paneli — "alternatif rotalar" ve "hikâye öğesi nereye" işinin arayüzü.
+   Analiz pahalı (aday hücre başına bir BFS), bu yüzden yalnız panel açıkken ya da
+   katman yanıkken hesaplanır; sonuç `NET` içinde önbelleklenir. */
+function netActive(){
+  const p=el("pNet");
+  return !!(VIEW.net || VIEW.must || (p && !p.classList.contains("collapsed")));
+}
+function renderNet(){
+  const box=el("netStats"), list=el("netSegs"), hint=el("netHint");
+  if(!box) return;
+  const sm=el("slackMin");
+  if(sm) sm.innerHTML = M ? ("≈ <b>"+(ROUTE_SLACK*M.secPerCell).toFixed(0)+" sn</b> ("+
+        (ROUTE_SLACK*doc.meta.cellSize).toFixed(0)+" m) fazladan yürüme.") : "";
+  if(!netActive()){
+    box.innerHTML='<p class="hint">Panel kapalıyken hesaplanmaz (aday hücre başına bir arama). '+
+                  'Paneli aç ya da <i>Rota ağı</i> katmanını yak.</p>';
+    list.innerHTML=""; hint.innerHTML=""; return;
+  }
+  const N=routeNet();
+  if(!N.ok){
+    box.innerHTML='<p class="hint" style="color:var(--warn)">'+esc(N.err||"hesaplanamadı")+'</p>';
+    list.innerHTML=""; hint.innerHTML=""; return;
+  }
+  const cp=M.cp;
+  const row=(lb,vl,tg,c)=>'<div class="metric"><span class="lb">'+lb+'</span><span class="vl '+(c||"")+'">'+vl+
+                          '</span>'+(tg?'<span class="tg">'+esc(tg)+'</span>':'')+'</div>';
+  const bos=N.segments.filter(g=>g.markers===0);
+  const skip=cp.uniqueCells - N.mandatory.size;
+  const durak=cp.waypoints.length;
+  const darLeg=N.legs.filter(L=>L.netCells<=L.D+1);          // alternatifsiz leg
+  let h='';
+  if(cp.auto)
+    h+='<p class="hint" style="color:var(--warn)">⚠ Durak zinciri <b>otomatik türetildi</b> '+
+       '(başlangıç → kaynak → kapı). SEMA §2: bu yalnız bir <b>alt sınırdır</b> — gerçek rota '+
+       'Kırık ve sahne duraklarını da gezer. Ağ ve zorunluluk bu eksik zincire göre ölçüldü; '+
+       'zinciri "Kritik yol durakları" panelinden elle kur.</p>';
+  h+='<div class="bar"><i style="width:'+pct(cp.uniqueCells?N.mandatory.size/cp.uniqueCells:0)+
+     ';background:#f778ba"></i><i style="flex:1;background:#a371f7"></i></div>';
+  h+=row("Rota ağı", N.netCells+" hücre", "bölgenin %"+(N.coverage*100).toFixed(0)+"'i", "");
+  h+=row("↳ genişlik", "×"+N.altRatio.toFixed(1), "kritik yol "+cp.uniqueCells+" hücre", "");
+  h+=row("↳ çatal", N.forks.length, "ileri ≥2 devam · §5.2", N.forks.length?"":"warn");
+  h+=row("↳ alternatifsiz parça", darLeg.length+"/"+N.legs.length,
+         darLeg.length?"Çizer işlevsiz":"seçim var", darLeg.length?"warn":"ok");
+  h+='<div class="sep"></div>';
+  h+=row("<b>Zorunlu hücre</b>", "<b>"+N.mandatory.size+"</b>", durak+" durak + boğaz",
+         N.mandatory.size>durak?"ok":"warn");
+  h+=row("↳ koridor", N.segments.length, N.segments.length?("en uzun "+N.segments[0].len):"", "");
+  h+=row("↳ boş koridor", bos.length, "yerleşim adayı", "");
+  h+=row("Zorunlu kenar", N.mandEdges.size, "her rotanın eşiği", "");
+  h+=row("Atlanabilir", skip, "yol hücresi", "");
+  h+=row("↳ pratikte zorunlu", Math.max(0, N.practical.size-N.mandatory.size),
+         "bypass > pay ("+N.slack+")", "");
+  h+=row("Arkada kalan işaret", N.behind.length, "geçerken görülmez", N.behind.length?"warn":"ok");
+  box.innerHTML=h;
+
+  list.innerHTML = N.segments.length
+    ? N.segments.map((g,i)=>{
+        const c=g.mid;
+        return '<div class="it" data-seg="'+i+'"><span>'+(g.markers?'':'⬤ ')+g.len+' hücre · '+
+               g.min.toFixed(1)+' dk · ('+c.x+','+c.y+')</span><span style="color:var(--'+
+               (g.markers?'fg3':'warn')+')">'+(g.markers? g.markers+' marker' : 'boş')+'</span></div>';
+      }).join("")
+    : '<p class="hint" style="color:var(--warn)">Zorunlu koridor yok — bölgede her hücre atlanabiliyor. '+
+      'Hiçbir hikâye öğesi garanti görülmez.</p>';
+  list.querySelectorAll("[data-seg]").forEach(d=>d.onclick=()=>{
+    const g=N.segments[+d.dataset.seg]; if(g) focusOn({t:"cell", id:g.mid.id});
+  });
+
+  hint.innerHTML='<b>Zorunlu koridor</b> = kapatıldığında rotanın kalmadığı hücreler; oyuncu hangi '+
+    'yoldan giderse gitsin buradan geçer. <b>Rota ağı</b> = en kısa rotadan en çok '+N.slack+
+    ' hücre uzun olan yürüyüşlerin hücreleri — <b>pay leg başınadır</b>, '+N.legs.length+
+    ' parçalık zincirde toplam en fazla '+(N.slack*N.legs.length)+' hücre ≈ '+
+    (N.slack*N.legs.length*M.secPerCell/60).toFixed(1)+' dk.<br><br>'+
+    '<b>Kapsam dürüstlüğü:</b> ölçülen şey <i>yürüyüş</i>tür, basit yol değil — ileri ve geri '+
+    'parça aynı koridoru kullanabilir. "Sapma derinliği" katmanı bilinçli olarak <b>yönsüz</b> '+
+    'ölçer (dönüş maliyeti), bu katman <b>yönlüdür</b>; tek yönlü kapı varsa ikisi aynı hücreyi '+
+    'farklı boyar.<br><br>'+
+    '<b>Canon gerilimi (§7.1-3):</b> "her ölü uç ödemelidir: Kırık, sembol, lore, manzara". '+
+    'Lore\'u zorunlu koridora taşımak bir ölü ucun ödemesini geri alır. Doğru ayrım: '+
+    '<b>kesilemez</b> öğeler (kronolojinin 3. belgesi, opsiyonel döngü — §7.3) zorunlu/yakın-zorunlu '+
+    'olmalı; ödül sınıfı öğeler ölü uçta kalmalı. Araç bu kararı senin yerine vermez.';
 }
 function pct(v){ return (v*100).toFixed(0)+"%"; }
 function cls(ok,warn){ return ok?"ok":(warn?"warn":"err"); }
@@ -2712,6 +3076,7 @@ function loadText(text, name){
   }catch(err){ toast("Açılamadı: "+err.message,"err"); }
 }
 let autosaveWarned=false;
+const SLACKKEY="project_maze.tool.slack";
 function autosave(){
   try{
     localStorage.setItem(AUTOKEY, JSON.stringify({name:fileName, t:Date.now(), d:doc}));
@@ -2770,6 +3135,7 @@ function buildViewToggles(){
               ["locked","Kilit deseni"],["oneway","Tek yön okları"],["kind","Hücre tipi izleri"],
               ["sight","Görüş hattı ısı haritası"],["debt","Ödemeyen ölü uç işareti"],
               ["detour","Sapma derinliği ısı haritası"],
+              ["net","Rota ağı (alternatif rotalar)"],["must","Zorunlu koridor"],
               ["coords","Koordinat"],["ids","ID"],["opendots","Açık kenar noktaları"]];
   el("viewToggles").innerHTML=defs.map(([k,l])=>
     '<label class="chk"><input type="checkbox" data-v="'+k+'"'+(VIEW[k]?" checked":"")+'> '+esc(l)+'</label>').join("");
@@ -2813,6 +3179,33 @@ function boot(){
   el("bDetourApply").onclick=()=>doDetour("apply");
   el("bDetourLink").onclick=()=>doDetour("link");
   el("bDetourTrim").onclick=()=>doDetour("trim");
+
+  // --- rota ağı: sapma payı GÖRÜNTÜLEME parametresidir, belgeye yazılmaz.
+  try{ const sv=localStorage.getItem(SLACKKEY); if(sv!=null) ROUTE_SLACK=clamp(+sv||0,0,400); }catch(e){}
+  el("fSlack").value=ROUTE_SLACK;
+  el("fSlack").onchange=()=>{
+    ROUTE_SLACK=clamp(Math.round(+el("fSlack").value)||0, 0, 400);
+    el("fSlack").value=ROUTE_SLACK;
+    try{ localStorage.setItem(SLACKKEY, String(ROUTE_SLACK)); }catch(e){}
+    NET=null; renderNet(); renderIssues(); invalidate();
+  };
+  el("bNetShow").onclick=()=>{
+    const on=!(VIEW.net&&VIEW.must);
+    VIEW.net=on; VIEW.must=on;
+    el("pView").classList.remove("collapsed");
+    buildViewToggles(); renderNet(); invalidate();
+    toast(on?"Rota ağı ve zorunlu koridor katmanları açık":"Katmanlar kapandı","ok");
+  };
+  let netK=0;
+  el("bNetEmpty").onclick=()=>{
+    const N=routeNet();
+    if(!N.ok) return toast(N.err||"Rota ağı hesaplanamadı","warn");
+    const bos=N.segments.filter(g=>g.markers===0);
+    if(!bos.length) return toast("Boş zorunlu koridor yok — hepsinde marker var","ok");
+    focusOn({t:"cell", id:bos[netK%bos.length].mid.id}); netK++;
+  };
+  // panel açılınca hesapla (kapalıyken hesaplamıyoruz)
+  el("pNet").querySelector("h2").addEventListener("click", ()=>setTimeout(renderNet,0));
   el("fTargetMode").onchange=()=>{
     const dead=el("fTargetMode").value==="dead";
     el("rowDead").style.display=dead?"flex":"none";
